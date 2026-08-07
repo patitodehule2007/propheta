@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       axios:
-        specifier: ^1.18.1
+        specifier: ^1.19.0
         version: 1.19.0
       react:
         specifier: ^19.2.8
@@ -18,7 +18,7 @@ importers:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
       react-router-dom:
-        specifier: ^7.18.1
+        specifier: ^7.18.2
         version: 7.18.2(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       zod:
         specifier: ^4.4.3
@@ -31,16 +31,16 @@ importers:
         specifier: ^9.39.5
         version: 9.39.5
       '@types/node':
-        specifier: ^26.1.1
+        specifier: ^26.1.2
         version: 26.1.2
       '@types/react':
-        specifier: ^19.2.17
+        specifier: ^19.2.18
         version: 19.2.18
       '@types/react-dom':
-        specifier: ^19.2.3
+        specifier: ^19.2.4
         version: 19.2.4(@types/react@19.2.18)
       '@vitejs/plugin-react-swc':
-        specifier: ^4.3.1
+        specifier: ^4.3.3
         version: 4.3.3(vite@8.2.0(@types/node@26.1.2))
       eslint:
         specifier: ^9.39.5
@@ -49,7 +49,7 @@ importers:
         specifier: ^7.1.1
         version: 7.1.1(eslint@9.39.5)
       eslint-plugin-react-refresh:
-        specifier: ^0.4.24
+        specifier: ^0.4.26
         version: 0.4.26(eslint@9.39.5)
       globals:
         specifier: ^16.5.0
@@ -61,10 +61,10 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
       typescript-eslint:
-        specifier: ^8.65.0
+        specifier: ^8.66.0
         version: 8.66.0(eslint@9.39.5)(typescript@5.9.3)
       vite:
-        specifier: ^8.1.5
+        specifier: ^8.2.0
         version: 8.2.0(@types/node@26.1.2)
 
 packages:
