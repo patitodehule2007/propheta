@@ -7,5 +7,12 @@
     "trailingComma": "none",
     "bracketSpacing": true,
     "arrowParens": "always",
-    "endOfLine": "lf"
+    "endOfLine": "lf",
+    "plugins": ["prettier-plugin-sql-cst"],
+    "overrides": [
+        {
+            "files": ["*.sql"],
+            "options": { "parser": "plpgsql", "sqlExperimentalPlpgsql": true }
+        }
+    ]
 }

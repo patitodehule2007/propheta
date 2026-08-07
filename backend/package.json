@@ -1,7 +1,7 @@
 {
     "name": "propheta-backend",
     "private": true,
-    "packageManager": "pnpm@11.8.0",
+    "packageManager": "pnpm@11.20.0",
     "scripts": {
         "dev": "ts-node src/index.ts",
         "build": "tsc",

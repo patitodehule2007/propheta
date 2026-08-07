@@ -11,6 +11,7 @@
         "@types/node": "^26.1.2",
         "@types/pg": "^8.20.4",
         "prettier": "^3.9.6",
+        "prettier-plugin-sql-cst": "^0.22.1",
         "ts-node": "^10.9.2",
         "typescript": "^5.9.3"
     }
