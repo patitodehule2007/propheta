@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# Thin wrapper. The suite sequence lives in tests/jest/run.sh so this hook and
+# the CI test job cannot drift apart.
+
+echo "Running integration tests before push..."
+
+REPO_DIR="$(git rev-parse --show-toplevel)"
+exec "$REPO_DIR/tests/jest/run.sh"

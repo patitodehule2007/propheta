@@ -1,0 +1,147 @@
+# =============================================================================
+# Local development stack for Propheta.
+#
+# Start order: db -> db-password-sync -> db-init -> db-seed -> backend -> frontend
+# =============================================================================
+
+name: propheta-dev
+
+services:
+    frontend:
+        build: ./frontend
+        container_name: propheta-frontend
+        restart: always
+        depends_on:
+            backend:
+                condition: service_healthy
+        ports:
+            - "3000:80"
+        networks:
+            - internal
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 10s
+
+    backend:
+        build: ./backend
+        container_name: propheta-backend
+        restart: always
+        depends_on:
+            db-seed:
+                condition: service_completed_successfully
+        ports:
+            - "5000:5000"
+        expose:
+            - "5000"
+        networks:
+            - internal
+        env_file:
+            - .env.defaults
+            - .env
+        environment:
+            DB_HOST: db
+        healthcheck:
+            test:
+                [
+                    "CMD-SHELL",
+                    'node -e "require(''http'').get(''http://127.0.0.1:5000/api/health'', r => process.exit(r.statusCode === 200 ? 0 : 1)).on(''error'', () => process.exit(1))"'
+                ]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 20s
+
+    db-password-sync:
+        image: postgres:16
+        restart: "no"
+        depends_on:
+            db:
+                condition: service_healthy
+        networks:
+            - internal
+        env_file:
+            - .env.defaults
+            - .env
+        volumes:
+            - postgres_socket:/var/run/postgresql
+            - ./database/password-sync:/scripts:ro
+        entrypoint: ["bash", "/scripts/sync-passwords.sh"]
+
+    db-init:
+        build: ./database/init
+        restart: "no"
+        depends_on:
+            db-password-sync:
+                condition: service_completed_successfully
+        networks:
+            - internal
+        env_file:
+            - .env.defaults
+            - .env
+        environment:
+            DB_HOST: db
+        command: ["init"]
+
+    db-seed:
+        build: ./database/init
+        restart: "no"
+        depends_on:
+            db-init:
+                condition: service_completed_successfully
+        networks:
+            - internal
+        env_file:
+            - .env.defaults
+            - .env
+        environment:
+            DB_HOST: db
+        command: ["seed-if-empty"]
+
+    db:
+        image: postgres:16
+        container_name: propheta-db
+        restart: always
+        env_file:
+            - .env.defaults
+            - .env
+        command: postgres -c hba_file=/etc/postgresql/pg_hba.conf -c shared_preload_libraries=pg_stat_statements
+        ports:
+            - "5432:5432"
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+            - postgres_socket:/var/run/postgresql
+            - ./database/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+        networks:
+            - internal
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+            interval: 5s
+            timeout: 3s
+            retries: 12
+
+    redis:
+        image: redis:7
+        container_name: propheta-redis
+        restart: always
+        env_file:
+            - .env.defaults
+            - .env
+        command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-dev_redis_pass}"]
+        ports:
+            - "6379:6379"
+        volumes:
+            - redis_data:/data
+        networks:
+            - internal
+
+volumes:
+    postgres_data:
+    postgres_socket:
+    redis_data:
+
+networks:
+    internal:
+        driver: bridge

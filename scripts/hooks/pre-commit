@@ -1,0 +1,30 @@
+#!/bin/sh
+
+# Ensure Node.js is in PATH (VSCode git hooks may strip it)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+
+set -e
+
+format_staged() {
+    DIR="$1"
+
+    FILES=$(git diff --cached --name-only --diff-filter=ACM -- "$DIR" | grep -E '\.(js|jsx|ts|tsx|json|css|scss|md|sql)$' || true)
+
+    if [ -z "$FILES" ]; then
+        return 0
+    fi
+
+    echo "Running prettier on $DIR..."
+
+    (cd "$DIR" && echo "$FILES" | sed "s|^$DIR/||" | xargs node_modules/.bin/prettier --write)
+
+    echo "$FILES" | xargs git add
+}
+
+format_staged frontend
+format_staged backend
+format_staged database/init
+format_staged tests/jest
+
+exit 0

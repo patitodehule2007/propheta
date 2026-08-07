@@ -1,0 +1,27 @@
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.defaults
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Logs
+logs/
+*.log
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
