@@ -19,9 +19,3 @@ coverage/
 # Logs
 logs/
 *.log
-
-# Editor and OS
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db

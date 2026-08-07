@@ -1,0 +1,36 @@
+{
+    "js/ts.format.insertSpaceAfterConstructor": true,
+    "js/ts.format.semicolons": "insert",
+    "editor.detectIndentation": false,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.formatOnSave": true,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
+        "**/node_modules": false
+    },
+    "terminal.integrated.suggest.enabled": true,
+    "terminal.integrated.shellIntegration.enabled": true,
+    "terminal.integrated.suggest.quickSuggestions": {
+        "commands": "on",
+        "arguments": "on",
+        "unknown": "on"
+    },
+    "terminal.integrated.suggest.inlineSuggestion": "alwaysOnTop",
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 3000,
+    "git.commandsToLog": [
+        "push"
+    ],
+    "editor.quickSuggestions": {
+        "other": "on",
+        "comments": "on",
+        "strings": "off"
+    },
+    "js/ts.hover.maximumLength": 500,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+}
