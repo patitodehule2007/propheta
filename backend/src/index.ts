@@ -12,7 +12,13 @@ const app = express();
 
 app.use(compression());
 app.use(cookieParser());
-app.use(express.json());
+app.use(
+    express.json({
+        verify: (req, _res, buf) => {
+            (req as express.Request).rawBody = Buffer.from(buf);
+        }
+    })
+);
 app.use(
     cors({
         origin: config.cors.allowedOrigins,

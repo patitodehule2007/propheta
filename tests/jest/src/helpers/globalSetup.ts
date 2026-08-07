@@ -6,7 +6,7 @@ export default async function globalSetup(): Promise<void> {
     const backendUrl = process.env.BACKEND_URL ?? "http://backend-test:5000";
 
     for (let attempt = 0; attempt < 60; attempt += 1) {
-        const response = await fetch(`${backendUrl}/health`);
+        const response = await fetch(`${backendUrl}/api/health`);
         if (response.ok) {
             return;
         }

@@ -32,6 +32,8 @@ services:
         depends_on:
             db-seed:
                 condition: service_completed_successfully
+            x-api-mock:
+                condition: service_healthy
         ports:
             - "5000:5000"
         expose:
@@ -43,6 +45,7 @@ services:
             - .env
         environment:
             DB_HOST: db
+            X_API_BASE_URL: http://x-api-mock:4100
         healthcheck:
             test:
                 [
@@ -121,6 +124,26 @@ services:
             interval: 5s
             timeout: 3s
             retries: 12
+
+    x-api-mock:
+        build: ./mocks/x-api-mock
+        container_name: propheta-x-api-mock
+        restart: always
+        networks:
+            - internal
+        env_file:
+            - .env.defaults
+            - .env
+        environment:
+            PORT: 4100
+        expose:
+            - "4100"
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4100/health"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 10s
 
     redis:
         image: redis:7

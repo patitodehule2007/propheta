@@ -13,12 +13,14 @@ Local development stack for Propheta, defined in `docker-compose.yml`.
 | `db-init`         | `./database/init`  | One-shot database initializer (migrations + SQL) |
 | `db-seed`         | `./database/init`  | One-shot demo seed (only if the DB is empty)   |
 | `redis`           | `redis:7`          | Redis 7 on port 6379                           |
+| `x-api-mock`      | `./mocks/x-api-mock` | Mocks the X Activity API (no real X credentials yet) |
 
 ### Service Dependencies
 
 ```
 frontend ──depends_on──▶ backend
 backend  ──depends_on──▶ db-seed
+backend  ──depends_on──▶ x-api-mock
 db-seed  ──depends_on──▶ db-init
 db-init  ──depends_on──▶ db-password-sync
 db-password-sync ──depends_on──▶ db
@@ -82,6 +84,10 @@ Executable database objects never live in migrations; they are rebuilt on every
 | `SECRET_KEY`         | JWT signing key              | —                  |
 | `TIME_ACCESS_TOKEN_LAST` | Access token TTL         | `15m`              |
 | `TIME_REFRESH_TOKEN_LAST` | Refresh token TTL       | `7d`               |
+| `X_API_BASE_URL`     | Base URL for the X API client | `http://x-api-mock:4100` (dev/test) |
+| `X_WEBHOOK_CONSUMER_SECRET` | Shared secret for webhook signature verification (backend) / signing (mock) | — |
+| `X_BEARER_TOKEN`     | X API bearer token (unused while `X_API_BASE_URL` points at the mock) | — |
+| `DRY_RUN`            | Disables order-sending side effects pipeline-wide | `true`             |
 
 ## Running Locally
 

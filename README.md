@@ -9,6 +9,7 @@ Full web app for agentic trading (autonomous trading agents).
 | `backend/`        | Express + TypeScript API. Queries via `pg` to DB functions.       |
 | `frontend/`       | React + Vite SPA (zustand, react-router-dom, axios via requestService). |
 | `database/init/`  | DB provisioning: knex migrations + SQL assets.                    |
+| `mocks/x-api-mock/` | Mocks the X Activity API (no real X credentials yet).           |
 | `tests/`          | Integration tests (Jest, own docker-compose with inlined fixtures). |
 | `docs/`           | Project docs.                                                     |
 | `scripts/`        | Bootstrap and dev tooling.                                        |

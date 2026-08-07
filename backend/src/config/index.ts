@@ -29,5 +29,11 @@ export const config = {
     },
     cors: {
         allowedOrigins: (process.env.CORS_ALLOWED_ORIGINS ?? "http://localhost:3000").split(",")
-    }
+    },
+    xApi: {
+        baseUrl: process.env.X_API_BASE_URL ?? "https://api.x.com",
+        webhookConsumerSecret: process.env.X_WEBHOOK_CONSUMER_SECRET ?? "",
+        bearerToken: process.env.X_BEARER_TOKEN ?? ""
+    },
+    dryRun: (process.env.DRY_RUN ?? "true") === "true"
 } as const;

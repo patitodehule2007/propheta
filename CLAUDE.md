@@ -19,6 +19,7 @@ Multi-package repo (separate pnpm projects, no root workspace). Package manager:
 | `backend/`         | Express + TypeScript API. Queries use `pg` with parameterized calls to DB functions.                                                    |
 | `frontend/`        | React + Vite SPA. zustand (state), react-router-dom, axios (only via `requestService`).                                                |
 | `database/init/`   | DB provisioning: knex migrations (`migrations/YYYYMMDDNNNNNN_*.ts`) + SQL assets in `sql/{functions,procedures,security,seed,triggers}`. |
+| `mocks/x-api-mock/` | Mocks the X Activity API (webhooks, CRC, subscriptions) until real X credentials exist.                                                |
 | `tests/`           | Integration tests (Jest, own docker-compose with inlined fixtures).                                                                     |
 | `docs/`            | Project docs.                                                                                                                           |
 | `scripts/`         | Bootstrap and dev tooling.                                                                                                              |

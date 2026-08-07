@@ -29,7 +29,7 @@ trap cleanup EXIT
 
 # db-init-test/db-seed-test bake the SQL into the image, so they must be rebuilt
 # or schema/RLS edits never reach the freshly initialized database.
-compose build db-init-test db-seed-test backend-test tests
+compose build db-init-test db-seed-test x-api-mock-test backend-test tests
 
 compose up -d db-test
 compose run --rm -T db-init-test
