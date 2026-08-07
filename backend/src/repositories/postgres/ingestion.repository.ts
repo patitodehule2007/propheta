@@ -52,9 +52,7 @@ export async function getActiveMonitoredAccounts(): Promise<MonitoredAccount[]> 
  *
  * @param platformUserId The `user_id` from the incoming post.create payload.
  */
-export async function getMonitoredAccountByPlatformUserId(
-    platformUserId: string
-): Promise<MonitoredAccount | null> {
+export async function getMonitoredAccountByPlatformUserId(platformUserId: string): Promise<MonitoredAccount | null> {
     const rows = await query<{ id: string; platform_user_id: string; handle: string; is_active: boolean }>(
         "SELECT * FROM get_monitored_account_by_platform_user_id($1)",
         [platformUserId]
@@ -109,17 +107,14 @@ export async function insertDecisionLog(params: {
     reason: string | null;
     metadata: Record<string, unknown> | null;
 }): Promise<DecisionLogEntry> {
-    const rows = await query<DecisionLogRow>(
-        "SELECT * FROM insert_decision_log($1, $2, $3, $4, $5, $6)",
-        [
-            params.ingestedPostId,
-            params.platformPostId,
-            params.stage,
-            params.decision,
-            params.reason,
-            params.metadata
-        ]
-    );
+    const rows = await query<DecisionLogRow>("SELECT * FROM insert_decision_log($1, $2, $3, $4, $5, $6)", [
+        params.ingestedPostId,
+        params.platformPostId,
+        params.stage,
+        params.decision,
+        params.reason,
+        params.metadata
+    ]);
     const row = rows[0];
     if (!row) throw new Error("insert_decision_log returned no row");
     return {

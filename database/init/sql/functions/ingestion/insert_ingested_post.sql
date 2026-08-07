@@ -7,13 +7,7 @@ CREATE FUNCTION insert_ingested_post(
     p_raw_text text,
     p_received_at timestamptz
 )
-RETURNS TABLE (
-    id uuid,
-    monitored_account_id uuid,
-    platform_post_id text,
-    raw_text text,
-    received_at timestamptz
-)
+RETURNS TABLE (id uuid, monitored_account_id uuid, platform_post_id text, raw_text text, received_at timestamptz)
 LANGUAGE sql
 AS $$
     INSERT INTO ingested_posts (monitored_account_id, platform_post_id, raw_text, received_at)
