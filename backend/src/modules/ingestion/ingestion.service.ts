@@ -39,8 +39,8 @@ export async function receiveEvent(
         await insertDecisionLog({
             ingestedPostId: null,
             platformPostId,
-            stage: "TWEET_RECIBIDO",
-            decision: "DESCARTADO",
+            stage: "TWEET_RECIVED",
+            decision: "DISCARDED",
             reason: "invalid_signature",
             metadata: null
         });
@@ -53,8 +53,8 @@ export async function receiveEvent(
         await insertDecisionLog({
             ingestedPostId: null,
             platformPostId,
-            stage: "TWEET_RECIBIDO",
-            decision: "DESCARTADO",
+            stage: "TWEET_RECIVED",
+            decision: "DISCARDED",
             reason: "author_not_monitored",
             metadata: { authorId: event.data.author_id }
         });
@@ -72,8 +72,8 @@ export async function receiveEvent(
         await insertDecisionLog({
             ingestedPostId: null,
             platformPostId,
-            stage: "TWEET_RECIBIDO",
-            decision: "DESCARTADO",
+            stage: "TWEET_RECIVED",
+            decision: "DISCARDED",
             reason: "duplicate_post",
             metadata: null
         });
@@ -83,7 +83,7 @@ export async function receiveEvent(
     await insertDecisionLog({
         ingestedPostId: ingestedPost.id,
         platformPostId,
-        stage: "TWEET_RECIBIDO",
+        stage: "TWEET_RECIVED",
         decision: "INGESTED",
         reason: null,
         metadata: { handle: account.handle, dryRun: config.dryRun }
