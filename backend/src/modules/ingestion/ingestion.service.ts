@@ -2,12 +2,14 @@ import { config } from "../../config";
 import { AuthenticationError } from "../../shared/core/errors";
 import { logger } from "../../shared/services/logger";
 import {
+    createMonitoredAccount,
     getMonitoredAccountByPlatformUserId,
     insertDecisionLog,
-    insertIngestedPost
+    insertIngestedPost,
+    MonitoredAccountDetail
 } from "../../repositories/postgres/ingestion.repository";
 import { computeCrcResponseToken, verifyWebhookSignature } from "./signatureVerification.service";
-import { createXWebhook, listXWebhooks } from "./xApiClient.service";
+import { createXWebhook, getUserByUsername, listXWebhooks } from "./xApiClient.service";
 import { PostCreateEvent } from "./xWebhook.schema";
 
 /**
@@ -108,4 +110,15 @@ export async function ensureWebhookRegistered(): Promise<{ id: string; url: stri
     const created = await createXWebhook(config.xApi.targetUrl);
     logger.info({ webhookId: created.id, url: created.url }, "X webhook registered");
     return { id: created.id, url: created.url, created: true };
+}
+
+/**
+ * Resolves a handle to its platform user id via the X API and adds it to
+ * the set of monitored accounts.
+ *
+ * @throws {ConflictError} When the resolved platform user id is already monitored.
+ */
+export async function addMonitoredAccount(handle: string): Promise<MonitoredAccountDetail> {
+    const xUser = await getUserByUsername(handle);
+    return createMonitoredAccount({ platformUserId: xUser.id, handle: xUser.username });
 }

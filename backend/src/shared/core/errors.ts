@@ -49,3 +49,13 @@ export class ExternalServiceError extends AppError {
         super(502, "EXTERNAL_SERVICE_ERROR", message);
     }
 }
+
+/**
+ * Thrown when a request conflicts with the current state of a resource
+ * (e.g. a unique constraint violation).
+ */
+export class ConflictError extends AppError {
+    constructor(message: string) {
+        super(409, "CONFLICT", message);
+    }
+}

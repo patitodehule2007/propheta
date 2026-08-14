@@ -1,9 +1,19 @@
+import { DatabaseError } from "pg";
+
+import { ConflictError, NotFoundError } from "../../shared/core/errors";
 import { query } from "../../shared/services/db";
+
+const UNIQUE_VIOLATION = "23505";
 
 export interface MonitoredAccount {
     id: string;
     platformUserId: string;
     handle: string;
+}
+
+export interface MonitoredAccountDetail extends MonitoredAccount {
+    isActive: boolean;
+    createdAt: string;
 }
 
 export interface IngestedPost {
@@ -171,4 +181,88 @@ export async function upsertXWebhookSubscription(params: {
         params.platformSubscriptionId,
         params.webhookId
     ]);
+}
+
+/**
+ * Inserts a new monitored account.
+ *
+ * @throws {ConflictError} When platform_user_id is already monitored.
+ */
+export async function createMonitoredAccount(params: {
+    platformUserId: string;
+    handle: string;
+}): Promise<MonitoredAccountDetail> {
+    try {
+        const rows = await query<{
+            id: string;
+            platform_user_id: string;
+            handle: string;
+            is_active: boolean;
+            created_at: string;
+        }>("SELECT * FROM create_monitored_account($1, $2)", [params.platformUserId, params.handle]);
+        const row = rows[0];
+        if (!row) throw new Error("create_monitored_account returned no row");
+        return {
+            id: row.id,
+            platformUserId: row.platform_user_id,
+            handle: row.handle,
+            isActive: row.is_active,
+            createdAt: row.created_at
+        };
+    } catch (err) {
+        if (err instanceof DatabaseError && err.code === UNIQUE_VIOLATION) {
+            throw new ConflictError(`Account @${params.handle} is already monitored`);
+        }
+        throw err;
+    }
+}
+
+/**
+ * Paginated read of every monitored account, active or not.
+ */
+export async function listMonitoredAccounts(params: {
+    limit: number;
+    offset: number;
+}): Promise<{ items: MonitoredAccountDetail[]; totalCount: number }> {
+    const rows = await query<{
+        id: string;
+        platform_user_id: string;
+        handle: string;
+        is_active: boolean;
+        created_at: string;
+        total_count: string;
+    }>("SELECT * FROM list_monitored_accounts($1, $2)", [params.limit, params.offset]);
+    const items = rows.map((row) => ({
+        id: row.id,
+        platformUserId: row.platform_user_id,
+        handle: row.handle,
+        isActive: row.is_active,
+        createdAt: row.created_at
+    }));
+    const totalCount = rows[0] ? Number(rows[0].total_count) : 0;
+    return { items, totalCount };
+}
+
+/**
+ * Soft-deletes (deactivates) a monitored account.
+ *
+ * @throws {NotFoundError} When no account matches the given id.
+ */
+export async function deactivateMonitoredAccount(id: string): Promise<MonitoredAccountDetail> {
+    const rows = await query<{
+        id: string;
+        platform_user_id: string;
+        handle: string;
+        is_active: boolean;
+        created_at: string;
+    }>("SELECT * FROM deactivate_monitored_account($1)", [id]);
+    const row = rows[0];
+    if (!row) throw new NotFoundError("Monitored account not found");
+    return {
+        id: row.id,
+        platformUserId: row.platform_user_id,
+        handle: row.handle,
+        isActive: row.is_active,
+        createdAt: row.created_at
+    };
 }

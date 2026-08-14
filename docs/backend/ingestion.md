@@ -46,6 +46,24 @@ safe to call repeatedly (e.g. on deploy). `X_WEBHOOK_TARGET_URL` has no
 default and must be set per environment: the real X API rejects webhook
 URLs that include a port number.
 
+## Managing monitored accounts
+
+`GET/POST /api/accounts`, `DELETE /api/accounts/:id`
+(`backend/src/routes/accounts.routes.ts`, `controller/accounts.controller.ts`)
+— behind `authMiddleware` (see `docs/backend/auth.md`), used by the
+dashboard's Accounts page:
+
+- `GET /api/accounts` — paginated (`limit`/`offset` + `totalCount`) list of
+  every monitored account, active or not.
+- `POST /api/accounts` — `{ handle }`. Resolves the handle to its platform
+  user id via `getUserByUsername` in `xApiClient.service.ts`
+  (`GET /2/users/by/username/:handle`), then inserts it
+  (`addMonitoredAccount` in `ingestion.service.ts`). A handle already
+  monitored raises a unique violation, mapped to `409 CONFLICT`.
+- `DELETE /api/accounts/:id` — soft delete (`is_active = false`), not a hard
+  delete: keeps referential integrity with `ingested_posts` and
+  `decision_log`. Unknown id → `404 NOT_FOUND`.
+
 ## Processing flow (`modules/ingestion/ingestion.service.ts`)
 
 1. Verify `x-twitter-webhooks-signature` (HMAC-SHA256, constant-time

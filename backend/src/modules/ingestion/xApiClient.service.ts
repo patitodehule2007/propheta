@@ -12,6 +12,16 @@ export interface XWebhook {
     valid: boolean;
 }
 
+/**
+ * Shape of the X API user resource fields this module relies on.
+ * https://docs.x.com/x-api/users/lookup/api-reference/get-users-by-username-username
+ */
+export interface XUser {
+    id: string;
+    name: string;
+    username: string;
+}
+
 interface XApiEnvelope<T> {
     data: T;
 }
@@ -52,4 +62,14 @@ export async function createXWebhook(url: string): Promise<XWebhook> {
         method: "POST",
         body: JSON.stringify({ url })
     });
+}
+
+/**
+ * Resolves a handle (e.g. `realDonaldTrump`) to its platform user id, so it
+ * can be stored and matched against `author_id` on incoming webhook events.
+ *
+ * @param username The X handle, without the leading `@`.
+ */
+export async function getUserByUsername(username: string): Promise<XUser> {
+    return xApiRequest<XUser>(`/2/users/by/username/${encodeURIComponent(username)}`);
 }
