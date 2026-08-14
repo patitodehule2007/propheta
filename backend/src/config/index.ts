@@ -40,7 +40,12 @@ export const config = {
         saltRounds: Number(getEnv("SALT_ROUNDS") ?? 10),
         secretKey: requiredEnv("SECRET_KEY"),
         accessTokenTtl: getEnv("TIME_ACCESS_TOKEN_LAST") ?? "15m",
-        refreshTokenTtl: getEnv("TIME_REFRESH_TOKEN_LAST") ?? "7d"
+        refreshTokenTtl: getEnv("TIME_REFRESH_TOKEN_LAST") ?? "7d",
+        // Only read by the admin bootstrap script (shared/scripts/createAdminUser.ts),
+        // never by an HTTP endpoint: there is no self-registration.
+        adminEmail: getEnv("NODE_ENV") === "development" ? (getEnv("ADMIN_EMAIL") ?? "") : requiredEnv("ADMIN_EMAIL"),
+        adminPassword:
+            getEnv("NODE_ENV") === "development" ? (getEnv("ADMIN_PASSWORD") ?? "") : requiredEnv("ADMIN_PASSWORD")
     },
     cors: {
         allowedOrigins: (getEnv("CORS_ALLOWED_ORIGINS") ?? "http://localhost:3000").split(",")

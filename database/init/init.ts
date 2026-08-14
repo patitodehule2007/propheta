@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import bcrypt from "bcryptjs";
 import { Client, ClientConfig } from "pg";
 import { knex as createKnex } from "knex";
 
@@ -192,7 +193,31 @@ export async function runSeed(): Promise<void> {
     const client = await connect();
     try {
         await client.query(`SET search_path TO ${FN_SCHEMA}, ${APP_SCHEMA}, public`);
-        for (const f of findSqlFiles(path.join(SQL_DIR, "seed"))) await execFile(client, f);
+
+        const seedDir = path.join(SQL_DIR, "seed");
+        const demoAdminSeed = path.join(seedDir, "auth_admin.sql");
+        const seedFiles = findSqlFiles(seedDir).filter((file) => file !== demoAdminSeed);
+        for (const f of seedFiles) await execFile(client, f);
+
+        const adminEmail = process.env.ADMIN_EMAIL ?? "";
+        const adminPassword = process.env.ADMIN_PASSWORD ?? "";
+        if (adminEmail && adminPassword) {
+            const saltRounds = Number(process.env.SALT_ROUNDS) || 10;
+            const passwordHash = await bcrypt.hash(adminPassword, saltRounds);
+            try {
+                await client.query("SELECT * FROM create_user($1, $2)", [adminEmail, passwordHash]);
+                console.log(`  ✓ Admin user from env: ${adminEmail}`);
+            } catch (err) {
+                if ((err as { code?: string }).code === "23505") {
+                    console.log(`  ✓ Admin user already exists: ${adminEmail}`);
+                } else {
+                    throw err;
+                }
+            }
+        } else {
+            await execFile(client, demoAdminSeed);
+            console.log("  ✓ Demo admin user (no ADMIN_EMAIL/ADMIN_PASSWORD set)");
+        }
     } finally {
         await client.end();
     }
