@@ -39,3 +39,13 @@ export class AuthenticationError extends AppError {
         super(401, "AUTHENTICATION_ERROR", message);
     }
 }
+
+/**
+ * Thrown when a call to an upstream third-party API fails or returns an
+ * unexpected response.
+ */
+export class ExternalServiceError extends AppError {
+    constructor(message: string) {
+        super(502, "EXTERNAL_SERVICE_ERROR", message);
+    }
+}

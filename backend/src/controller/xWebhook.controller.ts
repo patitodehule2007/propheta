@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 
 import { ValidationError } from "../shared/core/errors";
-import { handleCrcChallenge, receiveEvent } from "../modules/ingestion/ingestion.service";
+import { ensureWebhookRegistered, handleCrcChallenge, receiveEvent } from "../modules/ingestion/ingestion.service";
 import { postCreateEventSchema } from "../modules/ingestion/xWebhook.schema";
 import { listDecisionLog } from "../repositories/postgres/ingestion.repository";
 
@@ -52,4 +52,16 @@ export async function listDecisions(req: Request, res: Response): Promise<void> 
 
     const { items, totalCount } = await listDecisionLog({ platformPostId, limit, offset });
     res.status(200).json({ data: { items, totalCount, limit, offset }, message: "Decisions retrieved" });
+}
+
+/**
+ * Ensures the webhook for `X_WEBHOOK_TARGET_URL` is registered with X,
+ * creating it if it doesn't exist yet.
+ */
+export async function registerWebhook(_req: Request, res: Response): Promise<void> {
+    const result = await ensureWebhookRegistered();
+    res.status(200).json({
+        data: result,
+        message: result.created ? "Webhook created" : "Webhook already registered"
+    });
 }

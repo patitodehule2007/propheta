@@ -7,6 +7,7 @@ import {
     insertIngestedPost
 } from "../../repositories/postgres/ingestion.repository";
 import { computeCrcResponseToken, verifyWebhookSignature } from "./signatureVerification.service";
+import { createXWebhook, listXWebhooks } from "./xApiClient.service";
 import { PostCreateEvent } from "./xWebhook.schema";
 
 /**
@@ -88,4 +89,23 @@ export async function receiveEvent(
         reason: null,
         metadata: { handle: account.handle, dryRun: config.dryRun }
     });
+}
+
+/**
+ * Ensures a webhook pointing at `config.xApi.targetUrl` is registered with
+ * X, creating it if none exists yet. Idempotent: safe to call on every
+ * deploy/startup.
+ */
+export async function ensureWebhookRegistered(): Promise<{ id: string; url: string; created: boolean }> {
+    const webhooks = await listXWebhooks();
+    const existing = webhooks.find((webhook) => webhook.url === config.xApi.targetUrl);
+
+    if (existing) {
+        logger.info({ webhookId: existing.id, url: existing.url }, "X webhook already registered");
+        return { id: existing.id, url: existing.url, created: false };
+    }
+
+    const created = await createXWebhook(config.xApi.targetUrl);
+    logger.info({ webhookId: created.id, url: created.url }, "X webhook registered");
+    return { id: created.id, url: created.url, created: true };
 }

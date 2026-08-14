@@ -52,7 +52,8 @@ export const config = {
                 ? (getEnv("X_WEBHOOK_CONSUMER_SECRET") ?? "")
                 : requiredEnv("X_WEBHOOK_CONSUMER_SECRET"),
         bearerToken:
-            getEnv("NODE_ENV") === "development" ? (getEnv("X_BEARER_TOKEN") ?? "") : requiredEnv("X_BEARER_TOKEN")
+            getEnv("NODE_ENV") === "development" ? (getEnv("X_BEARER_TOKEN") ?? "") : requiredEnv("X_BEARER_TOKEN"),
+        targetUrl: requiredEnv("X_WEBHOOK_TARGET_URL")
     },
     dryRun: (process.env.DRY_RUN ?? "true") === "true"
 } as const;

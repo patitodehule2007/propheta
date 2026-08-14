@@ -37,6 +37,15 @@ by default (`X_API_BASE_URL`).
 `platformPostId`. Exists mainly so integration tests and the future
 dashboard can assert on what the pipeline decided.
 
+`POST /api/webhooks/x/registration` — ensures a webhook pointing at
+`X_WEBHOOK_TARGET_URL` is registered with X (`ensureWebhookRegistered` in
+`modules/ingestion/ingestion.service.ts`, calling the X API via
+`modules/ingestion/xApiClient.service.ts`): lists the account's existing
+webhooks and creates one only if none match the target URL. Idempotent —
+safe to call repeatedly (e.g. on deploy). `X_WEBHOOK_TARGET_URL` has no
+default and must be set per environment: the real X API rejects webhook
+URLs that include a port number.
+
 ## Processing flow (`modules/ingestion/ingestion.service.ts`)
 
 1. Verify `x-twitter-webhooks-signature` (HMAC-SHA256, constant-time
