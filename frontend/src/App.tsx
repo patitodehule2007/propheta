@@ -4,6 +4,7 @@ import { Route, Routes } from "react-router-dom";
 
 import { DashboardLayout } from "./components/DashboardLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { useAuthStore } from "./store/authStore";
@@ -25,6 +26,7 @@ export function App(): JSX.Element {
             <Route element={<ProtectedRoute />}>
                 <Route element={<DashboardLayout />}>
                     <Route path="/" element={<DashboardPage />} />
+                    <Route path="/accounts" element={<AccountsPage />} />
                 </Route>
             </Route>
         </Routes>
