@@ -30,11 +30,16 @@ x-test-environment: &test-environment
 
     SECRET_KEY: test_secret_key
     SALT_ROUNDS: 10
+    # Matches database/init/sql/seed/auth_admin.sql — demo/test-only, not a secret.
+    ADMIN_EMAIL: admin@propheta.test
+    ADMIN_PASSWORD: test_admin_password
 
     BACKEND_URL: http://backend-test:5000
 
     X_API_BASE_URL: http://x-api-mock-test:4100
     X_WEBHOOK_CONSUMER_SECRET: test_webhook_consumer_secret
+    X_BEARER_TOKEN: test_bearer_token
+    X_WEBHOOK_TARGET_URL: http://backend-test:5000/api/webhooks/x
     DRY_RUN: "true"
 
 services:
