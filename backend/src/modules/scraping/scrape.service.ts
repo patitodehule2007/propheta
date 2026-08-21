@@ -1,5 +1,6 @@
 import { logger } from "../../shared/services/logger";
-import { isScrapableUrl, scrapePageAsMarkdown } from "../../shared/services/webScraper";
+import { isScrapableUrl } from "../../shared/services/webScraper";
+import { scrapePageCached } from "./scrapeCache.service";
 import { MAX_URLS_PER_TWEET, TRAILING_PUNCTUATION_REGEX, URL_REGEX, type ScrapedLink } from "./scrape.constants";
 
 /**
@@ -30,7 +31,7 @@ export async function parseUrlsToMarkdown(text: string): Promise<ScrapedLink[]> 
     const urls = extractUrls(text).filter(isScrapableUrl);
     if (urls.length === 0) return [];
 
-    const results = await Promise.allSettled(urls.map((url) => scrapePageAsMarkdown(url)));
+    const results = await Promise.allSettled(urls.map((url) => scrapePageCached(url)));
 
     return results.reduce<ScrapedLink[]>((scraped, result, index) => {
         const url = urls[index];
