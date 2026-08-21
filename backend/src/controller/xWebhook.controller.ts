@@ -1,7 +1,8 @@
 import { Request, Response } from "express";
 
 import { ValidationError } from "../shared/core/errors";
-import { ensureWebhookRegistered, handleCrcChallenge, receiveEvent } from "../modules/ingestion/ingestion.service";
+import { ensureWebhookRegistered, handleCrcChallenge } from "../modules/ingestion/ingestion.service";
+import { runPipeline } from "../modules/desicionPipeline/orchestrator.service";
 import { postCreateEventSchema } from "../modules/ingestion/xWebhook.schema";
 import { listDecisionLog } from "../repositories/postgres/ingestion.repository";
 
@@ -23,8 +24,9 @@ export function crcChallenge(req: Request, res: Response): void {
 }
 
 /**
- * Receives a `post.create` webhook delivery. Signature verification and
- * persistence happen in the ingestion service; an invalid signature throws
+ * Receives a `post.create` webhook delivery and hands it to the decision
+ * pipeline, which coordinates the stages. Signature verification and
+ * persistence happen in the ingestion stage; an invalid signature throws
  * and is mapped to 401 by the centralized error middleware.
  */
 export async function receiveWebhookEvent(req: Request, res: Response): Promise<void> {
@@ -32,7 +34,7 @@ export async function receiveWebhookEvent(req: Request, res: Response): Promise<
     const signatureHeader = req.header("x-twitter-webhooks-signature");
     const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body));
 
-    await receiveEvent(rawBody, signatureHeader, event);
+    await runPipeline(rawBody, signatureHeader, event);
 
     res.status(200).json({ data: null, message: "Event processed" });
 }

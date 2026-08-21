@@ -40,13 +40,22 @@ interface Decision {
     stage: string;
     decision: string;
     reason: string | null;
+    metadata: Record<string, unknown> | null;
 }
 
 /**
  * Polls the backend's audit log endpoint until a decision_log row exists
  * for the given platform post id, or the timeout elapses.
+ *
+ * A post accumulates one row per pipeline stage it reaches, so pass `stage`
+ * to assert on a specific one — without it the most recent row wins, which is
+ * only unambiguous for posts that stop at ingestion.
  */
-export async function waitForDecision(platformPostId: string, timeoutMs = 10000): Promise<Decision> {
+export async function waitForDecision(
+    platformPostId: string,
+    options: { stage?: string; timeoutMs?: number } = {}
+): Promise<Decision> {
+    const { stage, timeoutMs = 10000 } = options;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
@@ -54,10 +63,23 @@ export async function waitForDecision(platformPostId: string, timeoutMs = 10000)
             `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`
         );
         const body = (await response.json()) as { data: { items: Decision[] } };
-        const decision = body.data.items[0];
+        const decision = stage ? body.data.items.find((item) => item.stage === stage) : body.data.items[0];
         if (decision) return decision;
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    throw new Error(`No decision_log entry for platformPostId=${platformPostId} within ${timeoutMs}ms`);
+    const target = stage ? `${platformPostId} at stage ${stage}` : platformPostId;
+    throw new Error(`No decision_log entry for platformPostId=${target} within ${timeoutMs}ms`);
+}
+
+/**
+ * Returns every stage recorded for a post, oldest first. Used to assert that a
+ * stage was NOT reached, which `waitForDecision` cannot express.
+ */
+export async function listDecisionStages(platformPostId: string): Promise<string[]> {
+    const response = await fetch(
+        `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`
+    );
+    const body = (await response.json()) as { data: { items: Decision[] } };
+    return body.data.items.map((item) => item.stage).reverse();
 }

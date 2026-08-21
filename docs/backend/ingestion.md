@@ -66,23 +66,55 @@ dashboard's Accounts page:
 
 ## Processing flow (`modules/ingestion/ingestion.service.ts`)
 
+This module is the **TWEET_RECEIVED stage** of the pipeline, not the entry
+point: `modules/desicionPipeline/orchestrator.service.ts` calls it and decides
+what happens next (see `docs/backend/decisionPipeline.md`).
+
+`receiveEvent` returns an `IngestionResult` — a discriminated union of
+`{ status: INGESTED, post, account }` or `{ status: DISCARDED, reason }` — so
+the orchestrator can branch. It does not return `void`: a stage that swallowed
+its own outcome could not be composed into a pipeline. The resolved `account`
+is handed back with the post so downstream stages do not re-query it.
+
 1. Verify `x-twitter-webhooks-signature` (HMAC-SHA256, constant-time
-   compare). Invalid → log `decision_log` row (`DESCARTADO`,
-   `reason: invalid_signature`), throw.
+   compare). Invalid → log `DISCARDED` / `invalid_signature`, then throw
+   `AuthenticationError`. The throw is deliberate and stays: an invalid
+   signature is an HTTP concern (401), not a pipeline outcome.
 2. Look up the author by `platform_user_id` in `monitored_accounts`. Not
-   found or inactive → log `DESCARTADO` / `author_not_monitored`, return
+   found or inactive → log `DISCARDED` / `author_not_monitored`, return
    (200 — this is not an error, just nothing to act on).
 3. Insert into `ingested_posts` (unique constraint on `platform_post_id`
    handles dedup atomically — no application-level duplicate check). Insert
-   returns no row on conflict → log `DESCARTADO` / `duplicate_post`.
+   returns no row on conflict → log `DISCARDED` / `duplicate_post`.
 4. Otherwise → log `INGESTED`, `reason: null`.
 
-This mirrors the `TWEET_RECIBIDO` stage of the state machine in
-`docs/projectDefenition/initial_investigation.md` §6.1. Later phases
-(classification, matching, risk, execution) will append their own
-`decision_log` rows for the same `platform_post_id` as those stages land —
+Stage/decision/reason values come from
+`backend/src/shared/core/decisionLog.constants.ts`, never string literals at
+the call site. This mirrors the `TWEET_RECIBIDO` stage of the state machine in
+`docs/projectDefenition/initial_investigation.md` §6.1 — the code spells it
+`TWEET_RECEIVED`, since the project is English-only. Later phases append their
+own `decision_log` rows for the same `platform_post_id` as those stages land —
 this table is designed to accumulate the whole audit trail, not just this
 stage.
+
+## What goes in `decision_log.metadata`
+
+The rule is **do not duplicate what the foreign key already reaches**:
+
+- **`INGESTED` rows carry no metadata.** `ingested_post_id` reaches the text,
+  the author and the handle through `ingested_posts` → `monitored_accounts`.
+  Copying them into the log would denormalize them across every stage row the
+  post goes on to produce.
+- **`DISCARDED` rows carry `authorId` and the post `text`.** A discarded post
+  never reaches `ingested_posts`, so its `decision_log` row — with
+  `ingested_post_id NULL` — is the *only* surviving record of the event.
+  Without them, an `invalid_signature` discard (a security alert, per §6.1)
+  left nothing to investigate, and an `author_not_monitored` discard threw away
+  exactly the data needed to decide whether to start monitoring that account.
+  The text is truncated to `MAX_AUDITED_TEXT_LENGTH` (500 chars) because an
+  unsigned payload is attacker-controlled and must not be stored unbounded.
+- **`invalid_signature` rows also carry `isPayloadVerified: false`**, so the
+  retained author and text are never mistaken for a genuine X event.
 
 ## Database
 
@@ -98,14 +130,23 @@ stage.
 
 ## Dry-run
 
-`config.dryRun` (`DRY_RUN`, default `true`) is recorded on every `INGESTED`
-decision's metadata. Nothing in this module sends orders regardless of the
-flag — it exists now so later phases (execution) have one config surface to
-gate on, per the project's dry-run-by-default rule.
+`config.dryRun` (`DRY_RUN`, default `true`) exists so later phases (execution)
+have one config surface to gate on, per the project's dry-run-by-default rule.
+
+It is currently **read by nothing**. It used to be written into every
+`INGESTED` row's metadata, which was misleading: the flag gates order
+execution, and this stage sends no orders, so recording it here implied it had
+influenced a decision it could not affect. It belongs on the `ORDEN_ENVIADA`
+row, where it will actually change behaviour.
 
 ## Testing
 
 `tests/jest/src/ingestion/webhook.test.ts` drives the whole slice through
 `mocks/x-api-mock`: CRC challenge, a monitored-author post, an
 unmonitored-author post, and a forged-signature post, asserting on the
-`decision_log` rows each produces via `GET /api/webhooks/x/decisions`.
+`decision_log` rows each produces via `GET /api/webhooks/x/decisions`. It also
+covers the enrichment stage — see `docs/backend/decisionPipeline.md`.
+
+Because a post now produces one row per stage, `waitForDecision` takes an
+optional `stage` to disambiguate; `listDecisionStages` asserts that a stage was
+*not* reached.
