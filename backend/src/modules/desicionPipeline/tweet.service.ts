@@ -1,20 +1,50 @@
-import { toMarkdown } from "../../shared/mappers/htmlToMarkdown";
-import axios from "axios";
+import { logger } from "../../shared/services/logger";
+import { isScrapableUrl, scrapePageAsMarkdown } from "../../shared/services/webScraper";
+import { MAX_URLS_PER_TWEET, TRAILING_PUNCTUATION_REGEX, URL_REGEX, type ScrapedLink } from "./tweet.constants";
 
-export async function parseURLs(text: string): Promise<string[] | null> {
-    const linkRegex =
-        /https?:\/\/(?:www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&//=]*)/;
-    const links: string[] | null = linkRegex.exec(text);
-    let markdows: string[] | null = null;
+/**
+ * Extracts every distinct http(s) URL contained in a post's text.
+ * @param text - raw post text
+ * @returns de-duplicated URLs, capped at MAX_URLS_PER_TWEET
+ */
+export function extractUrls(text: string): string[] {
+    const matches = text.matchAll(URL_REGEX);
+    const urls = new Set<string>();
 
-    if (links) {
-        const result = links.map(async (link) => {
-            const response = await axios.get(link);
-
-            if (response.status === 200 && response.data) return response.data;
-        });
-
-        markdows = toMarkdown(await Promise.all(result));
+    for (const match of matches) {
+        const url = match[0].replace(TRAILING_PUNCTUATION_REGEX, "");
+        if (url.length > 0) urls.add(url);
     }
-    return markdows;
+
+    return [...urls].slice(0, MAX_URLS_PER_TWEET);
+}
+
+/**
+ * Scrapes every link in a post and converts each page to markdown.
+ * Links that are unsafe, unreachable or not HTML are logged and skipped, so a
+ * single dead link never discards the pages that scraped successfully.
+ * @param text - raw post text
+ * @returns one entry per successfully scraped link; empty when there are none
+ */
+export async function parseUrlsToMarkdown(text: string): Promise<ScrapedLink[]> {
+    const urls = extractUrls(text).filter(isScrapableUrl);
+    if (urls.length === 0) return [];
+
+    const results = await Promise.allSettled(urls.map((url) => scrapePageAsMarkdown(url)));
+
+    return results.reduce<ScrapedLink[]>((scraped, result, index) => {
+        const url = urls[index];
+
+        if (result.status === "rejected") {
+            logger.warn({ url, reason: String(result.reason) }, "Failed to scrape link from post");
+            return scraped;
+        }
+        if (result.value === null) {
+            logger.warn({ url }, "Link produced no readable content");
+            return scraped;
+        }
+
+        scraped.push({ url, markdown: result.value });
+        return scraped;
+    }, []);
 }
