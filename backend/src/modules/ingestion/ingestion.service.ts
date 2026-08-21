@@ -1,5 +1,6 @@
 import { config } from "../../config";
 import { AuthenticationError } from "../../shared/core/errors";
+import { DecisionOutcome, DecisionStage } from "../../shared/core/decisionLog.constants";
 import { logger } from "../../shared/services/logger";
 import {
     createMonitoredAccount,
@@ -8,6 +9,7 @@ import {
     insertIngestedPost,
     MonitoredAccountDetail
 } from "../../repositories/postgres/ingestion.repository";
+import { runPostAnalysis } from "../agent/agent.service";
 import { computeCrcResponseToken, verifyWebhookSignature } from "./signatureVerification.service";
 import { createXWebhook, getUserByUsername, listXWebhooks } from "./xApiClient.service";
 import { PostCreateEvent } from "./xWebhook.schema";
@@ -42,8 +44,8 @@ export async function receiveEvent(
         await insertDecisionLog({
             ingestedPostId: null,
             platformPostId,
-            stage: "TWEET_RECIVED",
-            decision: "DISCARDED",
+            stage: DecisionStage.TWEET_RECEIVED,
+            decision: DecisionOutcome.DISCARDED,
             reason: "invalid_signature",
             metadata: null
         });
@@ -56,8 +58,8 @@ export async function receiveEvent(
         await insertDecisionLog({
             ingestedPostId: null,
             platformPostId,
-            stage: "TWEET_RECIVED",
-            decision: "DISCARDED",
+            stage: DecisionStage.TWEET_RECEIVED,
+            decision: DecisionOutcome.DISCARDED,
             reason: "author_not_monitored",
             metadata: { authorId: event.data.author_id }
         });
@@ -75,8 +77,8 @@ export async function receiveEvent(
         await insertDecisionLog({
             ingestedPostId: null,
             platformPostId,
-            stage: "TWEET_RECIVED",
-            decision: "DISCARDED",
+            stage: DecisionStage.TWEET_RECEIVED,
+            decision: DecisionOutcome.DISCARDED,
             reason: "duplicate_post",
             metadata: null
         });
@@ -86,10 +88,22 @@ export async function receiveEvent(
     await insertDecisionLog({
         ingestedPostId: ingestedPost.id,
         platformPostId,
-        stage: "TWEET_RECIVED",
-        decision: "INGESTED",
+        stage: DecisionStage.TWEET_RECEIVED,
+        decision: DecisionOutcome.INGESTED,
         reason: null,
         metadata: { handle: account.handle, dryRun: config.dryRun }
+    });
+
+    // Fire-and-forget: the agentic analysis loop can take tens of seconds
+    // (tool calls, page fetches), far longer than X's webhook ack window.
+    // Errors are handled and logged inside runPostAnalysis itself; this
+    // .catch() is only a backstop against an unexpected rejection escaping it.
+    void runPostAnalysis({
+        ingestedPostId: ingestedPost.id,
+        platformPostId,
+        text: event.data.text
+    }).catch((err) => {
+        logger.error({ err, platformPostId }, "Unhandled error from agent post-analysis");
     });
 }
 
