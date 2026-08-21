@@ -1,6 +1,6 @@
 import { logger } from "../../shared/services/logger";
 import { isScrapableUrl, scrapePageAsMarkdown } from "../../shared/services/webScraper";
-import { MAX_URLS_PER_TWEET, TRAILING_PUNCTUATION_REGEX, URL_REGEX, type ScrapedLink } from "./tweet.constants";
+import { MAX_URLS_PER_TWEET, TRAILING_PUNCTUATION_REGEX, URL_REGEX, type ScrapedLink } from "./scrape.constants";
 
 /**
  * Extracts every distinct http(s) URL contained in a post's text.
