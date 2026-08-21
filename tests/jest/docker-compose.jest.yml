@@ -40,6 +40,15 @@ x-test-environment: &test-environment
     X_WEBHOOK_CONSUMER_SECRET: test_webhook_consumer_secret
     X_BEARER_TOKEN: test_bearer_token
     X_WEBHOOK_TARGET_URL: http://backend-test:5000/api/webhooks/x
+
+    ANTHROPIC_API_KEY: test_anthropic_key
+    ANTHROPIC_BASE_URL: http://anthropic-mock-test:4200
+    ANTHROPIC_MODEL: claude-sonnet-5
+    AGENT_MAX_ITERATIONS: 6
+    AGENT_MAX_TOOL_CALLS: 10
+    SCRAPE_CACHE_TTL_SECONDS: 21600
+    SCRAPE_CACHE_NEGATIVE_TTL_SECONDS: 900
+
     DRY_RUN: "true"
 
 services:
@@ -116,6 +125,22 @@ services:
         networks:
             - test-network
 
+    anthropic-mock-test:
+        build: ../../mocks/anthropic-mock
+        env_file:
+            - ../../.env.defaults
+        environment:
+            <<: *test-environment
+            PORT: 4200
+        healthcheck:
+            test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4200/health || exit 1"]
+            interval: 5s
+            timeout: 3s
+            retries: 12
+            start_period: 10s
+        networks:
+            - test-network
+
     backend-test:
         build: ../../backend
         env_file:
@@ -126,6 +151,8 @@ services:
             redis-test:
                 condition: service_started
             x-api-mock-test:
+                condition: service_healthy
+            anthropic-mock-test:
                 condition: service_healthy
         environment:
             <<: *test-environment

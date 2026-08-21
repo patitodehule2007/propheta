@@ -19,6 +19,10 @@ instead of raw HTML.
 - `parseUrlsToMarkdown(text): Promise<ScrapedLink[]>` — scrapes each of those
   URLs and returns `{ url, markdown }` per page that yielded content. The
   `url` is retained so a downstream `decision_log` row can cite its source.
+  Each URL goes through `scrapeCache.service.ts`'s Redis cache (see
+  `docs/backend/agent.md`) before hitting the network, so a link scraped once
+  — by this bulk path or by the agent's `parse_url` tool — is not re-fetched
+  by the other.
 
 **Failures never propagate.** Unsafe, unreachable, non-HTML and empty pages are
 logged at `warn` through the shared pino logger and dropped from the result. A
@@ -26,6 +30,13 @@ post with three links where one is dead still yields two entries; a post with
 no usable links yields `[]`, never `null`.
 
 Tunables live in `tweet.constants.ts`.
+
+This deterministic, scrape-everything function is not currently wired into
+the ingestion flow — the agent module (`docs/backend/agent.md`) reads links
+selectively instead, deciding per post whether a link is worth fetching
+rather than always fetching every one. `extractUrls` is still useful on its
+own (used to seed the agent's prompt with candidate URLs); `parseUrlsToMarkdown`
+remains available for a future non-agentic path.
 
 ## The scraper
 

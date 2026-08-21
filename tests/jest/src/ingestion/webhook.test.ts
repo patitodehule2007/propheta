@@ -27,9 +27,12 @@ describe("X webhook ingestion", () => {
             text: `tariffs announcement ${randomUUID()}`
         });
 
-        const decision = await waitForDecision(postId);
+        // A monitored-author post also kicks off the (mocked) agent analysis
+        // asynchronously, which can land before this poll does — filter by
+        // stage rather than racing it for the most recent row.
+        const decision = await waitForDecision(postId, { stage: "TWEET_RECEIVED" });
 
-        expect(decision.stage).toBe("TWEET_RECIBIDO");
+        expect(decision.stage).toBe("TWEET_RECEIVED");
         expect(decision.decision).toBe("INGESTED");
         expect(decision.reason).toBeNull();
     });
@@ -39,7 +42,7 @@ describe("X webhook ingestion", () => {
 
         const decision = await waitForDecision(postId);
 
-        expect(decision.decision).toBe("DESCARTADO");
+        expect(decision.decision).toBe("DISCARDED");
         expect(decision.reason).toBe("author_not_monitored");
     });
 
@@ -53,7 +56,7 @@ describe("X webhook ingestion", () => {
         expect(deliveryStatus).toBe(401);
 
         const decision = await waitForDecision(postId);
-        expect(decision.decision).toBe("DESCARTADO");
+        expect(decision.decision).toBe("DISCARDED");
         expect(decision.reason).toBe("invalid_signature");
     });
 });

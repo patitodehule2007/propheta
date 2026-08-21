@@ -3,8 +3,9 @@
 Fase 0-1 slice of the Propheta pipeline described in
 `docs/projectDefenition/`: receives `post.create` events for monitored
 political accounts, verifies them, and writes an auditable decision log.
-No classification, market matching, or order execution happens yet — those
-are later phases.
+Classification now happens too (`docs/backend/agent.md`) — kicked off from
+here but living in its own module. Market matching and order execution are
+still later phases.
 
 ## Source of the events
 
@@ -74,15 +75,21 @@ dashboard's Accounts page:
    (200 — this is not an error, just nothing to act on).
 3. Insert into `ingested_posts` (unique constraint on `platform_post_id`
    handles dedup atomically — no application-level duplicate check). Insert
-   returns no row on conflict → log `DESCARTADO` / `duplicate_post`.
-4. Otherwise → log `INGESTED`, `reason: null`.
+   returns no row on conflict → log `DISCARDED` / `duplicate_post`.
+4. Otherwise → log `INGESTED`, `reason: null`, then kick off the agent's
+   post-analysis (`docs/backend/agent.md`) **without awaiting it** — X's
+   webhook ack window is much shorter than an agentic loop can take, so the
+   200 response goes out as soon as the post is persisted, and analysis
+   continues in the background of the same process.
 
 This mirrors the `TWEET_RECIBIDO` stage of the state machine in
-`docs/projectDefenition/initial_investigation.md` §6.1. Later phases
-(classification, matching, risk, execution) will append their own
-`decision_log` rows for the same `platform_post_id` as those stages land —
-this table is designed to accumulate the whole audit trail, not just this
-stage.
+`docs/projectDefenition/initial_investigation.md` §6.1 (stage/decision
+values in code are English —`TWEET_RECEIVED` / `INGESTED` / `DISCARDED`, see
+`shared/core/decisionLog.constants.ts`). Matching, risk and execution will
+append their own `decision_log` rows for the same `platform_post_id` as
+those stages land — this table is designed to accumulate the whole audit
+trail, not just this stage. The agent module already appends its own
+`AGENT_ANALYSIS` row after this one.
 
 ## Database
 
@@ -108,4 +115,7 @@ gate on, per the project's dry-run-by-default rule.
 `tests/jest/src/ingestion/webhook.test.ts` drives the whole slice through
 `mocks/x-api-mock`: CRC challenge, a monitored-author post, an
 unmonitored-author post, and a forged-signature post, asserting on the
-`decision_log` rows each produces via `GET /api/webhooks/x/decisions`.
+`decision_log` rows each produces via `GET /api/webhooks/x/decisions`. The
+monitored-author case now also triggers agent analysis, so it filters
+`waitForDecision` by `stage: "TWEET_RECEIVED"` rather than trusting
+whichever row is most recent — see `docs/backend/agent.md` § Testing.

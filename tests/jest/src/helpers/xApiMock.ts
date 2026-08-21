@@ -40,13 +40,21 @@ interface Decision {
     stage: string;
     decision: string;
     reason: string | null;
+    metadata: Record<string, unknown> | null;
 }
 
 /**
- * Polls the backend's audit log endpoint until a decision_log row exists
- * for the given platform post id, or the timeout elapses.
+ * Polls the backend's audit log endpoint until a decision_log row exists for
+ * the given platform post id, or the timeout elapses. A post now accumulates
+ * more than one row (ingestion, then agent analysis) — pass `stage` to wait
+ * for a specific one rather than racing whichever lands first; the endpoint
+ * returns newest-first, so an unfiltered call returns the most recent row.
  */
-export async function waitForDecision(platformPostId: string, timeoutMs = 10000): Promise<Decision> {
+export async function waitForDecision(
+    platformPostId: string,
+    options: { stage?: string; timeoutMs?: number } = {}
+): Promise<Decision> {
+    const { stage, timeoutMs = 10000 } = options;
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
@@ -54,10 +62,12 @@ export async function waitForDecision(platformPostId: string, timeoutMs = 10000)
             `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`
         );
         const body = (await response.json()) as { data: { items: Decision[] } };
-        const decision = body.data.items[0];
+        const decision = stage ? body.data.items.find((item) => item.stage === stage) : body.data.items[0];
         if (decision) return decision;
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    throw new Error(`No decision_log entry for platformPostId=${platformPostId} within ${timeoutMs}ms`);
+    throw new Error(
+        `No decision_log entry (stage=${stage ?? "any"}) for platformPostId=${platformPostId} within ${timeoutMs}ms`
+    );
 }
