@@ -60,5 +60,25 @@ export const config = {
             getEnv("NODE_ENV") === "development" ? (getEnv("X_BEARER_TOKEN") ?? "") : requiredEnv("X_BEARER_TOKEN"),
         targetUrl: requiredEnv("X_WEBHOOK_TARGET_URL")
     },
+    anthropic: {
+        // Empty in development so the stack boots without a key; the agent
+        // module no-ops (with a warn log) when this is empty. Required outside
+        // development, same pattern as xApi.bearerToken above.
+        apiKey:
+            getEnv("NODE_ENV") === "development"
+                ? (getEnv("ANTHROPIC_API_KEY") ?? "")
+                : requiredEnv("ANTHROPIC_API_KEY"),
+        // Only set to repoint at a local mock in tests; undefined lets the SDK
+        // use its own default base URL.
+        baseUrl: getEnv("ANTHROPIC_BASE_URL"),
+        model: getEnv("ANTHROPIC_MODEL") ?? "claude-sonnet-5",
+        maxTokens: Number(getEnv("ANTHROPIC_MAX_TOKENS") ?? 16000),
+        maxAgentIterations: Number(getEnv("AGENT_MAX_ITERATIONS") ?? 6),
+        maxToolCallsPerRun: Number(getEnv("AGENT_MAX_TOOL_CALLS") ?? 10)
+    },
+    scrapeCache: {
+        ttlSeconds: Number(getEnv("SCRAPE_CACHE_TTL_SECONDS") ?? 21_600),
+        negativeTtlSeconds: Number(getEnv("SCRAPE_CACHE_NEGATIVE_TTL_SECONDS") ?? 900)
+    },
     dryRun: (process.env.DRY_RUN ?? "true") === "true"
 } as const;
