@@ -262,6 +262,11 @@ would sit at the top of `runPostAnalysis` when it's built), and the novelty
 detector that compares against the author's recent statements. Nothing here
 sends an order regardless of `DRY_RUN`.
 
+All of those are covered by `docs/backend/tradeDecision.md`, the plan for the
+stages that consume a `PostClassification`. It reuses this module's two-phase
+shape and `toolRegistry`, so the new market tools land as registry entries
+here rather than as a parallel agent.
+
 ## Known gap: latency vs. the design doc
 
 `docs/projectDefenition/initial_investigation.md` §3 budgets **< 2s** for

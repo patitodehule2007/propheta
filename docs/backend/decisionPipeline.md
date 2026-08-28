@@ -122,5 +122,11 @@ row wins, which is only unambiguous for posts that stop at ingestion.
 
 ## Not implemented yet
 
-Classification, market matching, and order execution. Nothing in this module
-sends orders.
+Market matching, risk validation, and order execution. Nothing in this module
+sends orders. Classification now runs in the agent module
+(`docs/backend/agent.md`), triggered from ingestion rather than orchestrated
+here.
+
+The stages after classification are designed but unwritten:
+`docs/backend/tradeDecision.md` is the plan — the five gates from a classified
+post to an order, the tool catalog the selection agent gets, and the prompts.
