@@ -44,11 +44,12 @@ interface Decision {
 }
 
 /**
- * Polls the backend's audit log endpoint until a decision_log row exists for
- * the given platform post id, or the timeout elapses. A post now accumulates
- * more than one row (ingestion, then agent analysis) — pass `stage` to wait
- * for a specific one rather than racing whichever lands first; the endpoint
- * returns newest-first, so an unfiltered call returns the most recent row.
+ * Polls the backend's audit log endpoint until a decision_log row exists
+ * for the given platform post id, or the timeout elapses.
+ *
+ * A post accumulates one row per pipeline stage it reaches, so pass `stage`
+ * to assert on a specific one — without it the most recent row wins, which is
+ * only unambiguous for posts that stop at ingestion.
  */
 export async function waitForDecision(
     platformPostId: string,
@@ -67,7 +68,18 @@ export async function waitForDecision(
         await new Promise((resolve) => setTimeout(resolve, 250));
     }
 
-    throw new Error(
-        `No decision_log entry (stage=${stage ?? "any"}) for platformPostId=${platformPostId} within ${timeoutMs}ms`
+    const target = stage ? `${platformPostId} at stage ${stage}` : platformPostId;
+    throw new Error(`No decision_log entry for platformPostId=${target} within ${timeoutMs}ms`);
+}
+
+/**
+ * Returns every stage recorded for a post, oldest first. Used to assert that a
+ * stage was NOT reached, which `waitForDecision` cannot express.
+ */
+export async function listDecisionStages(platformPostId: string): Promise<string[]> {
+    const response = await fetch(
+        `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`
     );
+    const body = (await response.json()) as { data: { items: Decision[] } };
+    return body.data.items.map((item) => item.stage).reverse();
 }

@@ -1,8 +1,32 @@
 # Decision pipeline module
 
 `backend/src/modules/desicionPipeline/` (note the misspelled directory — kept
-as-is for now). Consumes posts accepted by the ingestion module and enriches
-them before classification. Only the **link-enrichment stage** exists today.
+as-is for now). Coordinates the stages a post passes through, from the webhook
+delivery to (eventually) an order. Ingestion and link enrichment exist today.
+
+## The orchestrator
+
+`orchestrator.service.ts` exports `runPipeline(rawBody, signatureHeader, event)`
+and is the **single entry point** for a `post.create` delivery.
+`controller/xWebhook.controller.ts` calls it, not the ingestion service.
+
+Each stage reports its outcome and the orchestrator decides whether the flow
+continues:
+
+1. **TWEET_RECEIVED** — `modules/ingestion/ingestion.service.ts`. Returns an
+   `IngestionResult`, a discriminated union of `INGESTED` (carrying the
+   persisted post and its monitored account) or `DISCARDED` (carrying the
+   reason). A discard stops the pipeline; nothing downstream runs.
+2. **LINKS_ENRICHED** — scrapes the links the post carries (below).
+
+Stages after enrichment — classification, market matching, risk validation,
+order execution — are **not implemented**. Nothing in this module sends orders.
+
+Stage, decision and discard-reason values are **not string literals at the call
+site**: they live in `backend/src/shared/core/decisionLog.constants.ts`
+(`PipelineStage`, `Decision`, `DiscardReason`). They sit in `shared/core`
+rather than in this module because ingestion writes them too, and this module
+already imports ingestion — a module-local home would be a circular dependency.
 
 ## Link enrichment
 
@@ -11,32 +35,31 @@ article, press release or executive order, the linked page is the actual
 signal — so the pipeline scrapes it and hands the classifier readable markdown
 instead of raw HTML.
 
-`tweet.service.ts` exports two functions:
+`modules/scraping/scrape.service.ts` exports two functions:
 
 - `extractUrls(text): string[]` — every distinct http(s) URL in the post text,
   with trailing sentence punctuation stripped (`...report.pdf,` →
-  `...report.pdf`), de-duplicated, capped at `MAX_URLS_PER_TWEET` (5).
+  `...report.pdf`), de-duplicated, capped at `MAX_URLS_PER_TWEET` (5). Note the
+  pattern requires a dotted host, so `http://localhost:9999/x` is not extracted
+  at all.
 - `parseUrlsToMarkdown(text): Promise<ScrapedLink[]>` — scrapes each of those
   URLs and returns `{ url, markdown }` per page that yielded content. The
-  `url` is retained so a downstream `decision_log` row can cite its source.
-  Each URL goes through `scrapeCache.service.ts`'s Redis cache (see
-  `docs/backend/agent.md`) before hitting the network, so a link scraped once
-  — by this bulk path or by the agent's `parse_url` tool — is not re-fetched
-  by the other.
+  `url` is retained so the `decision_log` row can cite its source.
 
 **Failures never propagate.** Unsafe, unreachable, non-HTML and empty pages are
 logged at `warn` through the shared pino logger and dropped from the result. A
 post with three links where one is dead still yields two entries; a post with
 no usable links yields `[]`, never `null`.
 
-Tunables live in `tweet.constants.ts`.
+The orchestrator writes a `LINKS_ENRICHED` row only when the post actually
+contained at least one URL — a post with no links produces no enrichment row,
+so the audit trail does not fill with empty stages. The row records
+`urlsFound`, `urlsScraped` and a `sources` array of `{ url, markdownLength }`.
+**The markdown itself is not stored**: it can run to megabytes and
+`decision_log` is an audit trail, not a content store. Persisting the scraped
+text needs its own table, which lands with the classification stage.
 
-This deterministic, scrape-everything function is not currently wired into
-the ingestion flow — the agent module (`docs/backend/agent.md`) reads links
-selectively instead, deciding per post whether a link is worth fetching
-rather than always fetching every one. `extractUrls` is still useful on its
-own (used to seed the agent's prompt with candidate URLs); `parseUrlsToMarkdown`
-remains available for a future non-agentic path.
+Tunables live in `modules/scraping/scrape.constants.ts`.
 
 ## The scraper
 
@@ -67,12 +90,35 @@ markdown, or `null` when there is nothing usable:
    absolute against the page URL so links survive the conversion.
 5. **Conversion.** The selected subtree is passed to the existing
    `shared/mappers/htmlToMarkdown.ts` (`node-html-markdown`). cheerio decides
-   *what* to convert; `node-html-markdown` does the converting.
+   _what_ to convert; `node-html-markdown` does the converting.
 
 The scraper lets axios errors propagate — interpreting them is the caller's
 job, per the project rule that error handling belongs with the coordinator.
 
 Scraper tunables live in `webScraper.constants.ts`.
+
+## Known limitation: enrichment runs inline
+
+`runPipeline` is awaited inside the webhook request, so the HTTP 200 back to X
+is delayed until scraping finishes — bounded by the scraper's 10s timeout
+(links are scraped in parallel via `Promise.allSettled`, so 5 links still cost
+~10s, not 50s). X expects prompt acknowledgement and retries deliveries that
+are slow, so this needs to become fire-and-forget — acknowledge first, then
+process off a queue — before the pipeline runs against the real X API. Redis is
+already in the stack for it.
+
+## Testing
+
+`tests/jest/src/ingestion/webhook.test.ts` covers the enrichment stage through
+the full pipeline: a post carrying a blocked-host URL
+(`http://169.254.169.254/latest/meta-data`) must still produce a
+`LINKS_ENRICHED` row with `urlsFound: 1, urlsScraped: 0`, proving both that the
+stage runs and that the SSRF guard holds end to end. A post with no links must
+produce no enrichment row at all.
+
+Because a post now accumulates one `decision_log` row per stage, the
+`waitForDecision` helper takes an optional `stage` — without it the most recent
+row wins, which is only unambiguous for posts that stop at ingestion.
 
 ## Not implemented yet
 

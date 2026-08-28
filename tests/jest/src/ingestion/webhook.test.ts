@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { registerBackendWebhook, simulatePost, waitForDecision } from "../helpers/xApiMock";
+import { listDecisionStages, registerBackendWebhook, simulatePost, waitForDecision } from "../helpers/xApiMock";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://backend-test:5000";
 
@@ -27,9 +27,6 @@ describe("X webhook ingestion", () => {
             text: `tariffs announcement ${randomUUID()}`
         });
 
-        // A monitored-author post also kicks off the (mocked) agent analysis
-        // asynchronously, which can land before this poll does — filter by
-        // stage rather than racing it for the most recent row.
         const decision = await waitForDecision(postId, { stage: "TWEET_RECEIVED" });
 
         expect(decision.stage).toBe("TWEET_RECEIVED");
@@ -44,6 +41,32 @@ describe("X webhook ingestion", () => {
 
         expect(decision.decision).toBe("DISCARDED");
         expect(decision.reason).toBe("author_not_monitored");
+    });
+
+    it("should record a link but not scrape it when the URL targets a blocked host", async () => {
+        // Post text is untrusted input: the SSRF guard must stop the backend being
+        // aimed at the cloud metadata endpoint, while still recording the attempt.
+        const { postId } = await simulatePost({
+            userId: MONITORED_USER_ID,
+            text: `leak http://169.254.169.254/latest/meta-data ${randomUUID()}`
+        });
+
+        const decision = await waitForDecision(postId, { stage: "LINKS_ENRICHED" });
+
+        expect(decision.decision).toBe("ENRICHED");
+        expect(decision.metadata).toMatchObject({ urlsFound: 1, urlsScraped: 0 });
+    });
+
+    it("should not log a LINKS_ENRICHED decision when an ingested post has no links", async () => {
+        const { postId } = await simulatePost({
+            userId: MONITORED_USER_ID,
+            text: `plain announcement ${randomUUID()}`
+        });
+
+        await waitForDecision(postId, { stage: "TWEET_RECEIVED" });
+        const stages = await listDecisionStages(postId);
+
+        expect(stages).toEqual(["TWEET_RECEIVED"]);
     });
 
     it("should discard with reason invalid_signature when the webhook signature is wrong", async () => {
