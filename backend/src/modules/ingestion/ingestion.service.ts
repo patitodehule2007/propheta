@@ -6,7 +6,6 @@ import {
     PipelineStage
 } from "../../shared/core/decisionLog.constants";
 import { AuthenticationError } from "../../shared/core/errors";
-import { DecisionOutcome, DecisionStage } from "../../shared/core/decisionLog.constants";
 import { logger } from "../../shared/services/logger";
 import {
     createMonitoredAccount,
@@ -17,7 +16,6 @@ import {
     MonitoredAccount,
     MonitoredAccountDetail
 } from "../../repositories/postgres/ingestion.repository";
-import { runPostAnalysis } from "../agent/agent.service";
 import { computeCrcResponseToken, verifyWebhookSignature } from "./signatureVerification.service";
 import { createXWebhook, getUserByUsername, listXWebhooks } from "./xApiClient.service";
 import { PostCreateEvent } from "./xWebhook.schema";
