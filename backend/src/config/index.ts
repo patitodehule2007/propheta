@@ -76,6 +76,27 @@ export const config = {
         maxAgentIterations: Number(getEnv("AGENT_MAX_ITERATIONS") ?? 6),
         maxToolCallsPerRun: Number(getEnv("AGENT_MAX_TOOL_CALLS") ?? 10)
     },
+    kalshi: {
+        // Includes the `/trade-api/v2` prefix on purpose: Kalshi signs the full
+        // path from the API root, so the prefix has to be part of the URL the
+        // signer derives the signed path from. Swap this single value to move
+        // between demo and production (https://external-api.kalshi.com/trade-api/v2).
+        baseUrl: getEnv("KALSHI_API_BASE_URL") ?? "https://external-api.demo.kalshi.co/trade-api/v2",
+        // Empty in development so the stack boots without Kalshi credentials;
+        // the client then throws on the first call. Same pattern as
+        // anthropic.apiKey above.
+        apiKeyId:
+            getEnv("NODE_ENV") === "development"
+                ? (getEnv("KALSHI_API_KEY_ID") ?? "")
+                : requiredEnv("KALSHI_API_KEY_ID"),
+        // RSA private key PEM. Env transports it as a single line with escaped
+        // newlines, so they are restored here.
+        privateKey: (getEnv("NODE_ENV") === "development"
+            ? (getEnv("KALSHI_PRIVATE_KEY") ?? "")
+            : requiredEnv("KALSHI_PRIVATE_KEY")
+        ).replace(/\\n/g, "\n"),
+        timeoutMs: Number(getEnv("KALSHI_TIMEOUT_MS") ?? 10_000)
+    },
     scrapeCache: {
         ttlSeconds: Number(getEnv("SCRAPE_CACHE_TTL_SECONDS") ?? 21_600),
         negativeTtlSeconds: Number(getEnv("SCRAPE_CACHE_NEGATIVE_TTL_SECONDS") ?? 900)
