@@ -8,7 +8,8 @@
 
 Covers the step after `AGENT_ANALYSIS`: turning a classified post into a
 specific Kalshi ticker and side — or, far more often, into a logged reason for
-doing nothing. Derived from `docs/projectDefenition/initial_investigation.md`
+doing nothing — and the bounds under which the resulting position is closed
+again. Derived from `docs/projectDefenition/initial_investigation.md`
 §4.3 (classifier architecture), §5.3–§5.8 (Kalshi surface, orderbook, orders,
 fees), §6.1 (operation state machine), §6.3 (mandatory risk limits) and §7.2
 (decision log).
@@ -32,10 +33,10 @@ This is the same split the project already applies to the database: the model,
 like a DB function, performs one bounded operation and returns; the backend
 interprets the result and decides what happens next.
 
-## Structure: five gates, one model call
+## Structure: six gates, one model call
 
 The post arrives already classified (`PostClassification` — topic, direction,
-confidence). Four of the five gates are pure code; the model runs once, in the
+confidence). Five of the six gates are pure code; the model runs once, in the
 middle, over a pre-computed candidate set. Every gate writes its own
 `decision_log` row and may end the flow — per §6.1, the log of trades _not_
 taken is the point of the audit trail.
@@ -65,6 +66,12 @@ AGENT_ANALYSIS / CLASSIFIED
    ├─ DRY_RUN ────────────────────▶ ORDER_SIMULATED
    ▼
    ORDER_PLACED
+   ▼
+6. EXIT SUPERVISION                deterministic, quote-feed driven
+   ├─ target reached ─────────────▶ EXIT_TAKE_PROFIT
+   ├─ stop breached ──────────────▶ EXIT_STOP_LOSS
+   ├─ deadline passed ────────────▶ EXIT_TIME_LIMIT
+   ├─ close buffer reached ───────▶ EXIT_MARKET_CLOSE
 ```
 
 ### 1. Pre-gate — deterministic, zero tokens
@@ -128,7 +135,11 @@ The veto layer. In order:
    per-topic exposure, daily loss, orders per minute.
 4. Derive the size (1–2 % of capital, clamped by remaining topic budget and by
    top-of-book depth) and a bounded limit price. Never a market order.
-5. Mint the `client_order_id` UUID and persist the proposal **before** anything
+5. Compute the **exit policy** — deadline, stop loss, gain top — and persist it
+   with the proposal. See [Exit policy](#exit-policy--time-limit-stop-loss-gain-top).
+   Computed before the order goes out, so a position can never exist without
+   one.
+6. Mint the `client_order_id` UUID and persist the proposal **before** anything
    goes over the wire (§5.5 — idempotency is the only defence against double
    execution on a network timeout).
 
@@ -137,7 +148,9 @@ The veto layer. In order:
 Kalshi V2 order surface under `/portfolio/events/orders`, RSA-PSS signed,
 idempotent on `client_order_id`; `409` treated as success. With
 `config.dryRun` (`DRY_RUN`, default `true`) this gate logs `ORDER_SIMULATED`
-and stops. Exit policy and position management (§6.2) are a separate design.
+and stops. On a fill the position enters exit supervision with the policy gate 4
+already computed; broader position management (§6.2 — scaling, correlated
+exposure, netting) stays a separate design.
 
 ## Tool catalog
 
@@ -304,8 +317,10 @@ exactly one structured trade proposal.
   quoted prices.
 - conviction is how sure you are of that estimate, not how large the move is.
 - horizonMinutes is how long you expect the repricing to take: minutes for a
-  concrete announcement, hours or more for a rumor. It feeds the exit timer.
-  Leave it null when you cannot judge, and the topic default applies.
+  concrete announcement, hours or more for a rumor. It is one input to the exit
+  timer, blended with a volatility estimate and then clamped. Leave it null when
+  you cannot judge - the deterministic estimate is then used alone. A number you
+  are not confident in is worse than null.
 - noTradeReason is required when action is NO_TRADE, and must be the closest
   value in the enum.
 - rejectedCandidates must list every candidate you were shown and why you did
@@ -368,6 +383,225 @@ the existing `DiscardReason` wire contract.
 | `insufficient_balance` | Kalshi `available_balance_too_low`. |
 | `dry_run` | `DRY_RUN=true`, the current default. |
 
+## Exit policy — time limit, stop loss, gain top
+
+Every filled position gets three deterministic bounds, computed at gate 4 and
+frozen with the proposal: a **deadline**, a **stop loss** and a **gain top**
+(take profit). Whichever triggers first closes the position. A position with no
+policy attached is a bug, not a state — the policy is written in the same
+transaction as the proposal, before anything goes over the wire.
+
+Rationale: §6.1's thesis is a latency window, and a latency window expires. A
+position held past the moment the market has finished repricing is no longer the
+trade that was approved — it is an unmanaged directional bet on the underlying
+event, which no gate in this pipeline ever validated.
+
+### The one thing the model contributes
+
+`horizonMinutes` from the proposal schema, and nothing else. Stop and target are
+pure code: they are money-loss limits, and per the boundary this document is
+built on, the model is never trusted with those.
+
+The time limit is the only bound where the model has real information a price
+series does not — whether this post is a scheduled announcement (repricing in
+minutes) or a rumor (hours). So it is **weighted against** a deterministic
+estimate rather than replacing it or being discarded.
+
+### Blending the two
+
+```
+weight w = config.trading.exitHorizonModelWeight     // EXIT_HORIZON_MODEL_WEIGHT, 0..1
+H_model  = proposal.horizonMinutes                   // may be null
+H_det    = deterministic estimate (below)
+
+H_raw = H_model === null
+      ? H_det
+      : H_model^w * H_det^(1 - w)                    // geometric, not arithmetic
+```
+
+**Geometric, deliberately.** Horizons span two orders of magnitude (5 minutes to
+a day). An arithmetic mean of 10 and 600 is 305 — closer to neither input and
+wrong for both. The geometric mean is 77, which is a defensible "somewhere
+between minutes and hours". Blending in log space is the standard treatment for
+quantities that vary multiplicatively, and duration is one.
+
+`w` is the single dial the `.env` owns, and it is where the weight falls:
+
+| `EXIT_HORIZON_MODEL_WEIGHT` | Behaviour |
+| --- | --- |
+| `0.0` | Pure deterministic. The model's horizon is logged and ignored. The safe production default until the model's horizons have been measured against outcomes. |
+| `0.3` | Deterministic-led, model nudges. Recommended once a few hundred trades exist. |
+| `0.5` | Even. |
+| `1.0` | Pure model. Useful only for calibration runs and backtests — never for live capital, because it hands an unvalidated number direct control of holding time. |
+
+Then clamped, in order:
+
+```
+H = clamp(H_raw, EXIT_HORIZON_MIN_MINUTES, EXIT_HORIZON_MAX_MINUTES)
+H = min(H, minutesUntil(market.closeTime) - EXIT_CLOSE_BUFFER_MINUTES)
+deadlineAt = fillTime + H minutes
+```
+
+The close-time clamp is hard and unconditional. Holding into settlement converts
+a mispricing trade into a binary bet on the event itself — the exact conversion
+this policy exists to prevent. If the clamp drives `H` below
+`EXIT_HORIZON_MIN_MINUTES`, gate 4 vetoes the trade as `closing_too_soon` rather
+than opening a position it cannot manage.
+
+Both inputs and the resolved value are persisted (`horizon_model_minutes`,
+`horizon_deterministic_minutes`, `horizon_source`), so the blend weight can later
+be tuned against realised outcomes instead of taste.
+
+### Deterministic estimator — options
+
+`EXIT_HORIZON_SYSTEM` selects one. All three implement the same interface —
+`(candidate, proposal, priceSamples) => minutes | null` — so swapping is a config
+change, and `null` falls through to the next option in the list below it.
+
+**A. ATR / volatility-scaled — `ATR`, the v1 choice.**
+
+The classic Wilder ATR, adapted to a 0–100¢ bounded contract. Bars are built
+from the Redis quote snapshot (`EXIT_ATR_BAR_SECONDS`, default 60):
+
+```
+TR_i  = max(high_i − low_i, |high_i − close_{i−1}|, |low_i − close_{i−1}|)   // cents
+ATR   = Wilder EMA of TR over EXIT_ATR_PERIOD bars (default 14)              // cents per bar
+velocity = ATR / barMinutes                                                  // cents per minute
+
+edgeCents = |fairProbability × 100 − entryPriceCents|
+H_det     = EXIT_ATR_HORIZON_MULTIPLIER × edgeCents / velocity
+```
+
+The reasoning is dimensional and holds up: the trade needs the price to travel
+`edgeCents`, and the market's own recent behaviour says it travels `velocity`
+cents per minute. Time is distance over speed. A fast-moving market gets a short
+leash because it will either confirm or refute quickly; a sleepy one gets longer
+because it takes longer to say anything at all.
+
+Same ATR then sizes the stop, so one volatility estimate drives both bounds and
+they stay mutually consistent — a stop tighter than the market's own per-minute
+noise is a guaranteed exit, and the shared estimate makes that arithmetically
+impossible to configure by accident.
+
+Returns `null` when fewer than `EXIT_ATR_MIN_BARS` bars exist (a market the quote
+feed only just started watching) or when `velocity` rounds to zero (a book that
+has not moved at all — no basis for a time estimate). Both fall through to B.
+
+**B. Fixed per-topic table — `TOPIC_TABLE`, and the fallback for A.**
+
+A hand-written `topic → default horizon minutes` column on `topic_market_map`,
+reviewed like the tag mapping itself. §6.2 already argues Δ should be calibrated
+per topic. Cheap, cold-start-proof, entirely auditable, and blind to whether this
+particular market is currently moving. It is the floor of the system: always
+available, never adaptive.
+
+**C. Empirical survival curve — `SURVIVAL`, phase two.**
+
+Mine closed positions for time-to-repricing per `(topic, direction)`; take the
+`EXIT_SURVIVAL_PERCENTILE` (e.g. p75) of the distribution of times at which the
+gain top was reached. Strictly the most accurate of the three, and the only one
+that learns. Unusable until a few hundred closed positions exist, which is why it
+is not v1 — it is named here so the schema carries the columns it will need
+(`opened_at`, `closed_at`, `exit_reason`, `peak_favourable_cents`) from the first
+migration rather than a backfill later.
+
+### Stop loss
+
+Pure code, ATR-scaled, evaluated against the price the position could **actually
+be sold at** — the bid on the held side, never the ask. Quoting a long against
+the ask flatters every position by the spread and would make the stop fire late,
+by exactly the amount that hurts most in an illiquid book.
+
+```
+stopDistance = clamp(
+  EXIT_STOP_LOSS_ATR_MULTIPLIER × ATR,
+  EXIT_STOP_LOSS_MIN_CENTS,
+  EXIT_STOP_LOSS_MAX_CENTS
+)
+stopPriceCents = entryFillCents − stopDistance      // held-side price
+```
+
+- ATR-scaled so the stop sits outside normal noise for *this* market. A fixed 5¢
+  stop is loose on a market that moves 1¢ an hour and is pure noise-triggering on
+  one that moves 4¢ a minute.
+- The floor and ceiling are not decoration. Without a floor, a quiet book yields
+  a sub-fee stop that exits at a loss on the first tick; without a ceiling, a
+  violent one yields a stop below the per-trade exposure the risk gate approved.
+- Clamped to a valid contract price. `stopPriceCents < 1` means the stop cannot
+  bind — the position is then governed by the deadline alone, and that is logged,
+  not silently ignored.
+- Realised loss at the stop is `stopDistance + entryFee + exitFee`. The exposure
+  cap in §6.3 must be checked against that number, not against `stopDistance`, or
+  the true worst case sits above the approved limit.
+
+**Thesis-invalidation, deliberately not v1.** The theoretically better stop fires
+when the price moves far enough against the position that the original
+`fairProbability` cannot be right. It needs a recalibration step that does not
+exist yet, and a wrong one exits good positions. Listed under open decisions.
+
+### Gain top
+
+The target is bounded by the model's own fair value. Aiming past
+`fairProbability` is not trading the thesis — the thesis says the contract is
+worth that much and no more; anything beyond it is hoping.
+
+```
+edgeCents  = fairProbability × 100 − entryFillCents
+rawTarget  = entryFillCents + EXIT_TAKE_PROFIT_EDGE_FRACTION × edgeCents
+                                            // fraction default 0.7
+roundTrip  = entryFeeCents + expectedExitFeeCents
+floor      = entryFillCents + roundTrip + EXIT_TAKE_PROFIT_MIN_NET_CENTS
+targetPriceCents = clamp(max(rawTarget, floor), 1, 99)
+```
+
+- `EXIT_TAKE_PROFIT_EDGE_FRACTION < 1` on purpose. The last cents of a
+  convergence are the slowest and least certain; taking 70 % of a move that
+  reliably completes beats holding for 100 % of one that sometimes reverses.
+- The fee floor is the same §5.8 arithmetic gate 4 already applies at entry,
+  applied again at exit. A target inside the round trip is a target that books a
+  loss on a winning thesis.
+- When `floor > rawTarget` — a thin edge — the target moves up to the floor. If
+  that pushes it above `fairProbability × 100`, the trade never had a profitable
+  exit and gate 4 vetoes it as `edge_below_cost` before it is placed. The two
+  checks are the same check at two points in time.
+- Evaluated against the held-side bid, same as the stop.
+
+### Enforcement
+
+A supervisor in `modules/trading`, not a timer. `setTimeout` is forbidden for
+business flow control by project rule, and would be wrong regardless: it dies
+with the process, and positions outlive deploys.
+
+- Open positions live in a Redis sorted set scored by `deadlineAt`. A sweep
+  (`EXIT_SWEEP_INTERVAL_MS`) pops what is due. Infrastructure cadence, not
+  business logic — the deadline itself is persisted in Postgres and is the source
+  of truth. A restart rebuilds the sorted set from the table.
+- Stop and gain top are evaluated on the Kalshi WebSocket tick (§5.6) for the
+  held ticker — the same feed the quote cache already needs, no extra
+  subscription. Price-triggered exits fire on the tick, not on a poll interval.
+- Every exit writes a `decision_log` row carrying the trigger, the price, the
+  held duration and the realised P&L, closing §7.2's audit trail on the exit side
+  the way the entry gates close it on the entry side.
+- Exits obey `DRY_RUN` symmetrically. A simulated entry must produce a simulated
+  exit, or the P&L record is fiction.
+- Precedence when several trigger on the same tick: `EXIT_MARKET_CLOSE` >
+  `EXIT_STOP_LOSS` > `EXIT_TAKE_PROFIT` > `EXIT_TIME_LIMIT`. Capital
+  preservation first, and a deterministic order means the log never has to be
+  interpreted.
+
+### Exit reason vocabulary
+
+Code-produced, like the veto set — never in any model schema.
+
+| Exit reason | Trigger |
+| --- | --- |
+| `time_limit` | `now ≥ deadlineAt`. |
+| `stop_loss` | Held-side bid `≤ stopPriceCents`. |
+| `take_profit` | Held-side bid `≥ targetPriceCents`. |
+| `market_close` | Inside `EXIT_CLOSE_BUFFER_MINUTES` of close. |
+| `kill_switch` | Daily loss limit or manual halt, flattens everything. |
+| `exit_failed` | Close order rejected; alert and retry, position stays open and logged. |
+
 ## Prerequisites
 
 None of this can be written before the following exist.
@@ -378,10 +612,18 @@ Persistent state only, per the project rule; no functions or triggers in
 migrations.
 
 - `topic_market_map` — the hand-written topic → Kalshi tags table. §5.3 calls
-  this the highest-leverage piece of the system.
+  this the highest-leverage piece of the system. Also carries
+  `default_horizon_minutes` for estimator B.
 - `kalshi_series`, `kalshi_markets` — the market cache, refreshed incrementally
   by `min_updated_ts`, carrying `fee_type` and `fee_multiplier`.
 - `trade_proposals`, `orders`, `positions` — `client_order_id` unique.
+- `positions` carries the exit policy and everything needed to grade it later:
+  `deadline_at`, `stop_price_cents`, `target_price_cents`, `horizon_source`,
+  `horizon_model_minutes`, `horizon_deterministic_minutes`, `atr_cents`,
+  `opened_at`, `closed_at`, `exit_reason`, `exit_price_cents`,
+  `peak_favourable_cents`, `realized_pnl_cents`. The last four exist from the
+  first migration specifically so estimator C has a history to mine without a
+  backfill.
 
 All with `created_at` / `updated_at`, declared foreign keys, and
 `idx_{table}_{column}` indexes on the lookup columns.
@@ -390,7 +632,14 @@ All with `created_at` / `updated_at`, declared foreign keys, and
 
 One atomic function per operation, no branching and no `EXCEPTION` blocks; the
 backend sequences them: `get_candidate_markets_by_topic`, `upsert_kalshi_market`,
-`insert_trade_proposal`, `get_open_exposure_by_topic`, `insert_order`.
+`insert_trade_proposal`, `get_open_exposure_by_topic`, `insert_order`,
+`insert_position`, `get_open_positions`, `get_positions_due_for_exit`,
+`update_position_peak_favourable`, `close_position`.
+
+`get_positions_due_for_exit` takes a timestamp and returns rows; it does not
+decide anything. The precedence rules, the stop and target comparisons and the
+P&L arithmetic all live in the backend — the function is a read, per the
+no-business-logic-in-the-database rule.
 
 ### A live quote cache — the one real ordering problem
 
@@ -411,12 +660,35 @@ Thresholds are env-driven, never inline: `TRADE_MIN_CONFIDENCE`,
 `MAX_TRADE_EXPOSURE_PCT`, `MAX_TOPIC_EXPOSURE_PCT`, `MAX_DAILY_LOSS_PCT`,
 `MAX_ORDERS_PER_MINUTE`, `SELECTION_MAX_ITERATIONS`, `SELECTION_MAX_TOOL_CALLS`.
 
+Exit policy adds `config.trading.exit`:
+
+| Var | Default | Purpose |
+| --- | --- | --- |
+| `EXIT_HORIZON_MODEL_WEIGHT` | `0` | The dial. `0` = deterministic only, `1` = model only. |
+| `EXIT_HORIZON_SYSTEM` | `ATR` | `ATR` \| `TOPIC_TABLE` \| `SURVIVAL`. |
+| `EXIT_HORIZON_MIN_MINUTES` | `5` | Below this, gate 4 vetoes instead of opening. |
+| `EXIT_HORIZON_MAX_MINUTES` | `1440` | Hard ceiling on holding time. |
+| `EXIT_CLOSE_BUFFER_MINUTES` | `30` | Never hold inside this window before close. |
+| `EXIT_ATR_PERIOD` | `14` | Wilder period, in bars. |
+| `EXIT_ATR_BAR_SECONDS` | `60` | Bar width built from the quote snapshot. |
+| `EXIT_ATR_MIN_BARS` | `10` | Below this, estimator A returns null. |
+| `EXIT_ATR_HORIZON_MULTIPLIER` | `2.0` | Slack over the pure distance-over-speed estimate. |
+| `EXIT_STOP_LOSS_ATR_MULTIPLIER` | `2.0` | Stop distance in ATRs. |
+| `EXIT_STOP_LOSS_MIN_CENTS` | `3` | Floor — below the round trip a stop cannot win. |
+| `EXIT_STOP_LOSS_MAX_CENTS` | `15` | Ceiling — caps worst case under the exposure limit. |
+| `EXIT_TAKE_PROFIT_EDGE_FRACTION` | `0.7` | Share of predicted edge to capture. |
+| `EXIT_TAKE_PROFIT_MIN_NET_CENTS` | `2` | Net margin required over the round trip. |
+| `EXIT_SURVIVAL_PERCENTILE` | `75` | Estimator C only. |
+| `EXIT_SWEEP_INTERVAL_MS` | `5000` | Deadline sweep cadence. Infrastructure, not flow control. |
+
 ### `decisionLog.constants.ts`
 
-New stages: `TRADE_CANDIDATES`, `TRADE_DECISION`, `RISK_VALIDATION`, `ORDER`.
-New outcomes: `PROPOSED`, `NO_TRADE`, `REJECTED`, `ORDER_PLACED`,
-`ORDER_SIMULATED`. Together with the existing rows this yields §7.2's full
-auditable record for every post, traded or not.
+New stages: `TRADE_CANDIDATES`, `TRADE_DECISION`, `RISK_VALIDATION`, `ORDER`,
+`EXIT`. New outcomes: `PROPOSED`, `NO_TRADE`, `REJECTED`, `ORDER_PLACED`,
+`ORDER_SIMULATED`, `EXIT_TIME_LIMIT`, `EXIT_STOP_LOSS`, `EXIT_TAKE_PROFIT`,
+`EXIT_MARKET_CLOSE`, `EXIT_FAILED`. Together with the existing rows this yields
+§7.2's full auditable record for every post, traded or not, and for every
+position from fill to close.
 
 ## Latency: the part of this design that fights itself
 
@@ -448,9 +720,11 @@ Calls to make explicitly before implementation starts.
    and a classification is reusable across markets while a selection is not.
    The cost is one extra round trip on the posts that clear the pre-gate.
 2. **Does the model propose the exit horizon, or does a per-topic Δ table own
-   it?** Recommendation: model suggests, config clamps. §6.2 is right that Δ
-   should be calibrated per topic, but the model is the only thing in the loop
-   that knows whether this is an announcement or a rumor.
+   it?** ~~Open~~ — resolved by
+   [Exit policy](#exit-policy--time-limit-stop-loss-gain-top): both, blended
+   geometrically, with `EXIT_HORIZON_MODEL_WEIGHT` deciding where the weight
+   falls and `EXIT_HORIZON_MODEL_WEIGHT=0` shipping as the launch default until
+   the model's horizons have been graded against outcomes.
 3. **How is novelty detected for the pre-gate?** §4.3 wants embeddings over the
    author's recent statements, which is its own subsystem. Recommendation: ship
    v1 with a heuristic — same author, same topic, same direction within N hours
@@ -463,3 +737,18 @@ Calls to make explicitly before implementation starts.
    enforces the caps deterministically. A `get_open_exposure` tool only helps
    once the model should be avoiding _correlated_ positions rather than merely
    capped ones — a phase-two problem.
+6. **Trailing stop after the gain top is approached?** Recommendation: not in
+   v1. A trailing stop converts a fixed, auditable exit into a path-dependent
+   one, and `peak_favourable_cents` is being recorded from day one precisely so
+   the question can be answered from data instead of intuition.
+7. **Thesis-invalidation stop alongside the ATR stop?** Recommendation: not in
+   v1. It needs a fair-value recalibration step that does not exist, and a bad
+   recalibration closes good positions. Revisit with estimator C, which needs
+   the same closed-position history.
+8. **Is the exit a limit order or a marketable one?** Entry is limit-only by
+   §6.3, but an exit that does not fill is not an exit — a stop that fails to
+   execute leaves the exact unbounded position the policy exists to prevent.
+   Recommendation: marketable limit, priced through the bid by a bounded
+   `EXIT_SLIPPAGE_CENTS`, with `exit_failed` logged and retried when it still
+   misses. Confirm before implementation — it is the one place this design
+   knowingly loosens a §6.3 rule.
