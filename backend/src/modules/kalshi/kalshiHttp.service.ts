@@ -60,7 +60,9 @@ kalshiHttpClient.interceptors.response.use(
 
         // Deliberately generic: this message is surfaced to clients by the
         // centralized error middleware, so it must not leak the upstream path,
-        // status or payload. The detail above stays server-side.
-        throw new ExternalServiceError("Kalshi API request failed");
+        // status or payload. The detail above stays server-side. upstreamStatus
+        // is attached for internal callers only (e.g. treating a 409 on order
+        // creation as idempotent success) and is never read by the middleware.
+        throw new ExternalServiceError("Kalshi API request failed", axiosError.response?.status);
     }
 );

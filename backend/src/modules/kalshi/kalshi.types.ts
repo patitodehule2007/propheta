@@ -234,6 +234,96 @@ export interface GetTradesResponse {
     cursor: string;
 }
 
+/**
+ * One ticker's orderbook in a batch response, keyed by the request order.
+ */
+export interface TickerOrderbook {
+    ticker: string;
+    orderbook_fp: Orderbook;
+}
+
+export interface GetMarketOrderbooksParams {
+    /** Comma-separated tickers, up to 100 per call. */
+    tickers: string;
+    depth?: number;
+}
+
+export interface GetMarketOrderbooksResponse {
+    orderbooks: TickerOrderbook[];
+}
+
+// --- Series -----------------------------------------------------------------
+
+/**
+ * How a series computes its per-contract fee.
+ * `quadratic` -- 0.07 x C x P x (1-P), rounded up to the cent (the default).
+ * `quadratic_with_maker_fees` -- the same formula, plus a maker-side fee.
+ * `flat` -- a fixed schedule, independent of price.
+ * Never assume a value: always read a series' own fee_type/fee_multiplier.
+ */
+export type FeeType = "quadratic" | "quadratic_with_maker_fees" | "flat";
+
+export interface Series {
+    ticker: string;
+    frequency: string;
+    title: string;
+    category: string;
+    tags: string[];
+    settlement_sources: SettlementSource[];
+    contract_url?: string;
+    fee_type: FeeType;
+    fee_multiplier: number;
+    /** Extra trading restrictions specific to this series -- read before automating on it. */
+    additional_prohibitions?: string[];
+    product_metadata?: Record<string, unknown> | null;
+    volume?: number;
+    volume_24h?: number;
+    last_updated_ts?: string;
+}
+
+export interface GetSeriesListParams {
+    category?: string;
+    /** Comma-separated tags, not space-separated -- a documented Kalshi trap. */
+    tags?: string;
+    include_volume?: boolean;
+    min_updated_ts?: number;
+    include_product_metadata?: boolean;
+}
+
+export interface GetSeriesListResponse {
+    series: Series[];
+}
+
+export interface GetSeriesResponse {
+    series: Series;
+}
+
+/**
+ * Map of series categories to the tag vocabulary Kalshi actually uses.
+ * Refreshed periodically (daily) and used to build the topic -> tags mapping
+ * in `topic_market_map`; not called on the trading critical path.
+ */
+export interface GetTagsByCategoriesResponse {
+    categories: Record<string, string[]>;
+}
+
+export interface FeeChange {
+    series_ticker: string;
+    fee_type: FeeType;
+    fee_multiplier: number;
+    effective_ts: string;
+    is_historical: boolean;
+}
+
+export interface GetSeriesFeeChangesParams {
+    series_ticker?: string;
+    show_historical?: boolean;
+}
+
+export interface GetSeriesFeeChangesResponse {
+    fee_changes: FeeChange[];
+}
+
 // --- Events ---------------------------------------------------------------
 
 /** Official source used to determine the markets in an event. */

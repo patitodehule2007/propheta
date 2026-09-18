@@ -29,9 +29,17 @@ export const KALSHI_PATHS = {
     markets: "/markets",
     market: (ticker: string): string => `/markets/${encodeURIComponent(ticker)}`,
     marketOrderbook: (ticker: string): string => `/markets/${encodeURIComponent(ticker)}/orderbook`,
+    // Batch orderbook read, up to 100 tickers per call -- the quote poller's
+    // primary path (docs/projectDefenition/initial_investigation.md §5.3).
+    marketOrderbooks: "/markets/orderbooks",
     trades: "/markets/trades",
     events: "/events",
     event: (eventTicker: string): string => `/events/${encodeURIComponent(eventTicker)}`,
+    series: "/series",
+    seriesByTicker: (seriesTicker: string): string => `/series/${encodeURIComponent(seriesTicker)}`,
+    seriesFeeChanges: "/series/fee_changes",
+    // Not text search: filter discovery over the real Kalshi tag vocabulary.
+    tagsByCategories: "/search/tags_by_categories",
     balance: "/portfolio/balance",
     positions: "/portfolio/positions",
     fills: "/portfolio/fills",

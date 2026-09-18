@@ -17,6 +17,8 @@ import {
     GetFillsResponse,
     GetMarketOrderbookParams,
     GetMarketOrderbookResponse,
+    GetMarketOrderbooksParams,
+    GetMarketOrderbooksResponse,
     GetMarketResponse,
     GetMarketsParams,
     GetMarketsResponse,
@@ -25,6 +27,12 @@ import {
     GetOrdersResponse,
     GetPositionsParams,
     GetPositionsResponse,
+    GetSeriesFeeChangesParams,
+    GetSeriesFeeChangesResponse,
+    GetSeriesListParams,
+    GetSeriesListResponse,
+    GetSeriesResponse,
+    GetTagsByCategoriesResponse,
     GetTradesParams,
     GetTradesResponse
 } from "./kalshi.types";
@@ -122,6 +130,67 @@ export const kalshiService = {
      */
     getTrades: (params?: GetTradesParams): Promise<GetTradesResponse> => {
         return get<GetTradesResponse>(KALSHI_PATHS.trades, params);
+    },
+
+    /**
+     * Reads the order books for up to 100 markets in one call. The batch path
+     * the quote poller uses instead of one request per ticker.
+     *
+     * @param params - up to 100 comma-separated tickers, plus an optional depth
+     * @returns one order book per requested ticker
+     * @throws {ExternalServiceError} when the request fails
+     */
+    getMarketOrderbooks: (params: GetMarketOrderbooksParams): Promise<GetMarketOrderbooksResponse> => {
+        return get<GetMarketOrderbooksResponse>(KALSHI_PATHS.marketOrderbooks, params);
+    },
+
+    // --- Series -----------------------------------------------------------------
+
+    /**
+     * Lists series, optionally filtered by category or tags. The bridge from a
+     * topic's Kalshi tags to its tradable series.
+     *
+     * @param params - category/tag filters; note `tags` is comma-separated, not space-separated
+     * @returns the matching series
+     * @throws {ExternalServiceError} when the request fails
+     */
+    getSeriesList: (params?: GetSeriesListParams): Promise<GetSeriesListResponse> => {
+        return get<GetSeriesListResponse>(KALSHI_PATHS.series, params);
+    },
+
+    /**
+     * Reads a single series by ticker, including its fee_type and fee_multiplier.
+     *
+     * @param seriesTicker - series ticker
+     * @returns the series
+     * @throws {ExternalServiceError} when the request fails or the series is unknown
+     */
+    getSeries: (seriesTicker: string): Promise<GetSeriesResponse> => {
+        return get<GetSeriesResponse>(KALSHI_PATHS.seriesByTicker(seriesTicker));
+    },
+
+    /**
+     * Reads the real Kalshi tag vocabulary, grouped by series category. Used to
+     * build and periodically review `topic_market_map`, never on the trading
+     * critical path.
+     *
+     * @returns categories mapped to their tags
+     * @throws {ExternalServiceError} when the request fails
+     */
+    getTagsByCategories: (): Promise<GetTagsByCategoriesResponse> => {
+        return get<GetTagsByCategoriesResponse>(KALSHI_PATHS.tagsByCategories);
+    },
+
+    /**
+     * Reads scheduled and, optionally, historical fee changes for a series.
+     * A scheduled change can turn a marginal strategy unprofitable overnight.
+     *
+     * @param params - optional series filter and historical-inclusion flag
+     * @returns the matching fee changes
+     * @throws {ExternalServiceError} when the request fails
+     */
+    getSeriesFeeChanges: (params?: GetSeriesFeeChangesParams): Promise<GetSeriesFeeChangesResponse> => {
+        return get<GetSeriesFeeChangesResponse>(KALSHI_PATHS.seriesFeeChanges, params);
     },
 
     // --- Events ---------------------------------------------------------------
