@@ -101,5 +101,56 @@ export const config = {
         ttlSeconds: Number(getEnv("SCRAPE_CACHE_TTL_SECONDS") ?? 21_600),
         negativeTtlSeconds: Number(getEnv("SCRAPE_CACHE_NEGATIVE_TTL_SECONDS") ?? 900)
     },
-    dryRun: (process.env.DRY_RUN ?? "true") === "true"
+    dryRun: (getEnv("DRY_RUN") ?? "true") === "true",
+    trading: {
+        // --- Gates (docs/backend/tradeDecision.md §6.3 + Config) -------------
+        minConfidence: Number(getEnv("TRADE_MIN_CONFIDENCE") ?? 0.6),
+        maxSpreadCents: Number(getEnv("MAX_SPREAD_CENTS") ?? 4),
+        maxSlippageCents: Number(getEnv("MAX_SLIPPAGE_CENTS") ?? 5),
+        minNetEdgeCents: Number(getEnv("MIN_NET_EDGE_CENTS") ?? 2),
+        maxTradeExposurePct: Number(getEnv("MAX_TRADE_EXPOSURE_PCT") ?? 2),
+        maxTopicExposurePct: Number(getEnv("MAX_TOPIC_EXPOSURE_PCT") ?? 5),
+        maxDailyLossPct: Number(getEnv("MAX_DAILY_LOSS_PCT") ?? 5),
+        maxOrdersPerMinute: Number(getEnv("MAX_ORDERS_PER_MINUTE") ?? 3),
+        selectionMaxIterations: Number(getEnv("SELECTION_MAX_ITERATIONS") ?? 2),
+        selectionMaxToolCalls: Number(getEnv("SELECTION_MAX_TOOL_CALLS") ?? 6),
+        noveltyWindowHours: Number(getEnv("TRADE_NOVELTY_WINDOW_HOURS") ?? 6),
+        maxCandidates: Number(getEnv("TRADE_MAX_CANDIDATES") ?? 10),
+        minHorizonMinutesFloor: Number(getEnv("TRADE_MIN_HORIZON_MINUTES") ?? 5),
+        minSeriesVolume: Number(getEnv("TRADE_MIN_SERIES_VOLUME") ?? 100),
+        tradingHorizonMinutes: Number(getEnv("TRADE_HORIZON_MINUTES") ?? 4320),
+        // --- Capital base -----------------------------------------------------
+        // Config value is the source of truth in dev/tests, where there are no
+        // Kalshi credentials to read a live balance from. In production, when
+        // credentials exist and DRY_RUN=false, it is overridden by a cached
+        // GET /portfolio/balance read.
+        capitalBaseCents: Number(getEnv("TRADE_CAPITAL_BASE_CENTS") ?? 100_000),
+        balanceCacheMs: Number(getEnv("TRADE_BALANCE_CACHE_MS") ?? 60_000),
+        // --- Quote feed (REST polling for v1; WebSocket is phase two) --------
+        quotePollEnabled: (getEnv("QUOTE_POLL_ENABLED") ?? "true") === "true",
+        quotePollIntervalMs: Number(getEnv("QUOTE_POLL_INTERVAL_MS") ?? 2_000),
+        quoteSampleTtlSeconds: Number(getEnv("QUOTE_SAMPLE_TTL_SECONDS") ?? 3_600),
+        marketCacheRefreshMs: Number(getEnv("MARKET_CACHE_REFRESH_MS") ?? 300_000),
+        // --- Exit policy (docs/backend/tradeDecision.md "Exit policy") -------
+        exit: {
+            horizonModelWeight: Number(getEnv("EXIT_HORIZON_MODEL_WEIGHT") ?? 0),
+            horizonSystem: getEnv("EXIT_HORIZON_SYSTEM") ?? "ATR",
+            horizonMinMinutes: Number(getEnv("EXIT_HORIZON_MIN_MINUTES") ?? 5),
+            horizonMaxMinutes: Number(getEnv("EXIT_HORIZON_MAX_MINUTES") ?? 1440),
+            closeBufferMinutes: Number(getEnv("EXIT_CLOSE_BUFFER_MINUTES") ?? 30),
+            atrPeriod: Number(getEnv("EXIT_ATR_PERIOD") ?? 14),
+            atrBarSeconds: Number(getEnv("EXIT_ATR_BAR_SECONDS") ?? 60),
+            atrMinBars: Number(getEnv("EXIT_ATR_MIN_BARS") ?? 10),
+            atrHorizonMultiplier: Number(getEnv("EXIT_ATR_HORIZON_MULTIPLIER") ?? 2.0),
+            stopLossAtrMultiplier: Number(getEnv("EXIT_STOP_LOSS_ATR_MULTIPLIER") ?? 2.0),
+            stopLossMinCents: Number(getEnv("EXIT_STOP_LOSS_MIN_CENTS") ?? 3),
+            stopLossMaxCents: Number(getEnv("EXIT_STOP_LOSS_MAX_CENTS") ?? 15),
+            takeProfitEdgeFraction: Number(getEnv("EXIT_TAKE_PROFIT_EDGE_FRACTION") ?? 0.7),
+            takeProfitMinNetCents: Number(getEnv("EXIT_TAKE_PROFIT_MIN_NET_CENTS") ?? 2),
+            survivalPercentile: Number(getEnv("EXIT_SURVIVAL_PERCENTILE") ?? 75),
+            sweepIntervalMs: Number(getEnv("EXIT_SWEEP_INTERVAL_MS") ?? 5_000),
+            // Marketable-limit exit slippage bound (open decision 8).
+            slippageCents: Number(getEnv("EXIT_SLIPPAGE_CENTS") ?? 5)
+        }
+    }
 } as const;

@@ -1,10 +1,12 @@
 import { IngestedPost, insertDecisionLog } from "../../repositories/postgres/ingestion.repository";
-import { Decision, PipelineStage } from "../../shared/core/decisionLog.constants";
+import { DecisionOutcome, DecisionStage } from "../../shared/core/decisionLog.constants";
 import { logger } from "../../shared/services/logger";
+import { runPostAnalysis } from "../agent/agent.service";
 import { receiveEvent } from "../ingestion/ingestion.service";
 import { PostCreateEvent } from "../ingestion/xWebhook.schema";
 import { extractUrls, parseUrlsToMarkdown } from "../scraping/scrape.service";
 import { ScrapedLink } from "../scraping/scrape.constants";
+import { runTradeDecision } from "../trading/tradeDecision.service";
 
 /**
  * Scrapes the links a post carries and records the attempt in the audit trail.
@@ -28,8 +30,8 @@ async function enrichLinks(post: IngestedPost): Promise<ScrapedLink[]> {
     await insertDecisionLog({
         ingestedPostId: post.id,
         platformPostId: post.platformPostId,
-        stage: PipelineStage.LINKS_ENRICHED,
-        decision: Decision.ENRICHED,
+        stage: DecisionStage.LINKS_ENRICHED,
+        decision: DecisionOutcome.ENRICHED,
         reason: null,
         metadata: {
             urlsFound: urlsFound.length,
@@ -42,12 +44,31 @@ async function enrichLinks(post: IngestedPost): Promise<ScrapedLink[]> {
 }
 
 /**
+ * Runs classification and, when it produces a classification, the trade
+ * decision gates after it. Fire-and-forget from `runPipeline`: both stages
+ * together can run 10-60s (see `docs/backend/agent.md`, "Known gap"), far
+ * longer than a webhook response should block for. Never throws — each stage
+ * writes its own `decision_log` row and is individually resilient.
+ */
+async function runPostPipeline(post: IngestedPost, handle: string): Promise<void> {
+    const classification = await runPostAnalysis({
+        ingestedPostId: post.id,
+        platformPostId: post.platformPostId,
+        text: post.rawText
+    });
+
+    if (!classification) return;
+
+    await runTradeDecision({ post, handle, classification });
+}
+
+/**
  * Runs one `post.create` delivery through the decision pipeline.
  *
  * Each stage reports its outcome and this coordinator decides whether the flow
- * continues, so a post dropped at ingestion never reaches enrichment. Stages
- * after enrichment (classification, market matching, risk validation, order
- * execution) are not implemented — nothing here sends orders.
+ * continues, so a post dropped at ingestion never reaches enrichment. Classification
+ * and the trade-decision gates run after enrichment but are not awaited here — see
+ * `runPostPipeline`.
  *
  * @param rawBody Exact request body bytes, required for signature verification.
  * @param signatureHeader Value of the `x-twitter-webhooks-signature` header.
@@ -61,7 +82,7 @@ export async function runPipeline(
 ): Promise<void> {
     const ingestion = await receiveEvent(rawBody, signatureHeader, event);
 
-    if (ingestion.status === Decision.DISCARDED) {
+    if (ingestion.status === DecisionOutcome.DISCARDED) {
         logger.info({ platformPostId: event.data.id, reason: ingestion.reason }, "Pipeline stopped at ingestion");
         return;
     }
@@ -76,4 +97,8 @@ export async function runPipeline(
         },
         "Post ingested and enriched"
     );
+
+    void runPostPipeline(ingestion.post, ingestion.account.handle).catch((err) => {
+        logger.error({ err, platformPostId: ingestion.post.platformPostId }, "Post pipeline failed after enrichment");
+    });
 }

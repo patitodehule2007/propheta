@@ -1,8 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import { scrapePageCached } from "../scraping/scrapeCache.service";
+import {
+    getKalshiMarketByTicker,
+    getKalshiMarketsByTickers,
+    getRecentClassificationsByHandle,
+    searchKalshiMarkets
+} from "../../repositories/postgres/trading.repository";
+import { getQuoteSamplesSince } from "../../repositories/redis/marketQuote.repository";
 import { logger } from "../../shared/services/logger";
 import { isScrapableUrl } from "../../shared/services/webScraper";
+import { scrapePageCached } from "../scraping/scrapeCache.service";
+import { computeFeePerContractCents } from "../trading/pricing";
+import { getLiveOrCachedQuote } from "../trading/quote.service";
+import { RECENT_POSTS_WINDOW_DAYS } from "../trading/trading.constants";
 
 /**
  * `Anthropic.ToolReferenceBlockParam` blocks are the documented contract for
@@ -104,7 +114,176 @@ const parseUrlTool: ToolRegistryEntry = {
     }
 };
 
-export const toolRegistry: ToolRegistryEntry[] = [searchToolsTool, parseUrlTool];
+const MAX_QUOTE_TICKERS = 20;
+const MS_PER_MINUTE = 60_000;
+
+const getMarketRulesTool: ToolRegistryEntry = {
+    name: "get_market_rules",
+    description:
+        "Read a Kalshi market's settlement rules and metadata: title, yes_sub_title, rules_primary, " +
+        "rules_secondary, close time and additional_prohibitions. A title is a summary; rules_primary is " +
+        "the contract -- always call this before proposing a market.",
+    keywords: ["market", "rules", "settlement", "kalshi", "ticker", "prohibitions"],
+    deferLoading: true,
+    inputSchema: {
+        type: "object",
+        properties: { ticker: { type: "string", description: "Kalshi market ticker." } },
+        required: ["ticker"]
+    },
+    run: async (input) => {
+        const ticker = String(input.ticker ?? "");
+        const market = await getKalshiMarketByTicker(ticker);
+        if (!market) return `No cached market found for ticker ${ticker}.`;
+        return JSON.stringify(market);
+    }
+};
+
+const getMarketQuoteTool: ToolRegistryEntry = {
+    name: "get_market_quote",
+    description:
+        "Refresh the quoted YES/NO ask, spread, top-of-book size and fee per contract for up to 20 " +
+        "market tickers. Prices are already derived from the bids-only order book -- never recompute them.",
+    keywords: ["quote", "price", "ask", "spread", "fee", "orderbook"],
+    deferLoading: true,
+    inputSchema: {
+        type: "object",
+        properties: {
+            tickers: {
+                type: "array",
+                items: { type: "string" },
+                description: "Up to 20 Kalshi market tickers."
+            }
+        },
+        required: ["tickers"]
+    },
+    run: async (input) => {
+        const tickers = (Array.isArray(input.tickers) ? input.tickers.map(String) : []).slice(0, MAX_QUOTE_TICKERS);
+        if (tickers.length === 0) return "No tickers provided.";
+
+        const marketInfo = await getKalshiMarketsByTickers(tickers);
+        const marketByTicker = new Map(marketInfo.map((market) => [market.ticker, market]));
+
+        const quotes = await Promise.all(
+            tickers.map(async (ticker) => {
+                const market = marketByTicker.get(ticker);
+                if (!market) return { ticker, error: "Unknown or uncached ticker." };
+
+                const sample = await getLiveOrCachedQuote(ticker);
+                const feePerContractAtAsk =
+                    sample.yesAskCents === null
+                        ? null
+                        : computeFeePerContractCents(sample.yesAskCents, market.feeType, market.feeMultiplier);
+
+                return {
+                    ticker,
+                    yesAsk: sample.yesAskCents,
+                    noAsk: sample.noAskCents,
+                    spreadCents: sample.spreadCents,
+                    topOfBookContracts: sample.topOfBookContracts,
+                    feePerContractAtAsk,
+                    status: market.status
+                };
+            })
+        );
+
+        return JSON.stringify(quotes);
+    }
+};
+
+const getPriceHistoryTool: ToolRegistryEntry = {
+    name: "get_price_history",
+    description:
+        "Read recent quote samples for one market, plus the price at the post's signal time and the move " +
+        "since then. Use this to check whether the market already moved before you arrived.",
+    keywords: ["history", "price", "move", "signal", "late", "samples"],
+    deferLoading: true,
+    inputSchema: {
+        type: "object",
+        properties: {
+            ticker: { type: "string", description: "Kalshi market ticker." },
+            sinceMinutes: { type: "number", description: "How many minutes of history to read." }
+        },
+        required: ["ticker", "sinceMinutes"]
+    },
+    run: async (input) => {
+        const ticker = String(input.ticker ?? "");
+        const sinceMinutes = Number(input.sinceMinutes ?? 60);
+        const samples = await getQuoteSamplesSince(ticker, Date.now() - sinceMinutes * MS_PER_MINUTE);
+        if (samples.length === 0) return `No quote history recorded yet for ${ticker}.`;
+
+        const priceAtSignal = samples[0]?.yesAskCents ?? null;
+        const latest = samples[samples.length - 1];
+        const moveSinceSignalCents =
+            priceAtSignal === null || !latest || latest.yesAskCents === null
+                ? null
+                : latest.yesAskCents - priceAtSignal;
+
+        return JSON.stringify({ ticker, priceAtSignal, moveSinceSignalCents, samples });
+    }
+};
+
+const findMarketsTool: ToolRegistryEntry = {
+    name: "find_markets",
+    description:
+        "Escape hatch: search the cached market catalog by tags, series ticker or a text query. Use this " +
+        "only when every candidate you were given fails on its settlement rules, not for browsing.",
+    keywords: ["find", "search", "candidates", "escape hatch"],
+    deferLoading: true,
+    inputSchema: {
+        type: "object",
+        properties: {
+            tags: { type: "array", items: { type: "string" }, description: "Kalshi series tags to filter by." },
+            seriesTicker: { type: "string", description: "Restrict to one series." },
+            query: { type: "string", description: "Free-text match against the market title." }
+        },
+        required: []
+    },
+    run: async (input) => {
+        const tags = Array.isArray(input.tags) ? input.tags.map(String) : null;
+        const seriesTicker = typeof input.seriesTicker === "string" ? input.seriesTicker : null;
+        const queryText = typeof input.query === "string" ? input.query : null;
+        const results = await searchKalshiMarkets({ tags, seriesTicker, queryText, limit: MAX_QUOTE_TICKERS });
+        if (results.length === 0) return "No open markets matched that search.";
+        return JSON.stringify(results);
+    }
+};
+
+const getAuthorRecentPostsTool: ToolRegistryEntry = {
+    name: "get_author_recent_posts",
+    description:
+        "Read a monitored account's recent classified posts on a topic, for novelty context: has this " +
+        "author already said this, in this direction, recently?",
+    keywords: ["novelty", "recent", "author", "handle", "history", "repeat"],
+    deferLoading: true,
+    inputSchema: {
+        type: "object",
+        properties: {
+            handle: { type: "string", description: "Monitored account handle." },
+            topic: { type: "string", description: "Topic to filter by." },
+            limit: { type: "number", description: "Maximum posts to return." }
+        },
+        required: ["handle", "topic"]
+    },
+    run: async (input) => {
+        const handle = String(input.handle ?? "");
+        const topic = String(input.topic ?? "");
+        const limit = Number(input.limit ?? 10);
+        const since = new Date(Date.now() - RECENT_POSTS_WINDOW_DAYS * 24 * 60 * MS_PER_MINUTE).toISOString();
+        const posts = await getRecentClassificationsByHandle({ handle, topic, since, limit });
+        if (posts.length === 0) return `No recent classified posts found for @${handle} on ${topic}.`;
+        return JSON.stringify(posts);
+    }
+};
+
+export const toolRegistry: ToolRegistryEntry[] = [
+    searchToolsTool,
+    parseUrlTool,
+    getMarketRulesTool,
+    getMarketQuoteTool,
+    getPriceHistoryTool,
+    findMarketsTool,
+    getAuthorRecentPostsTool
+];
 
 /**
  * Builds the `tools` array entries for these registry tools.

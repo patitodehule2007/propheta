@@ -1,9 +1,9 @@
 import { config } from "../../config";
 import {
-    Decision,
+    DecisionOutcome,
+    DecisionStage,
     DiscardReason,
-    MAX_AUDITED_TEXT_LENGTH,
-    PipelineStage
+    MAX_AUDITED_TEXT_LENGTH
 } from "../../shared/core/decisionLog.constants";
 import { AuthenticationError } from "../../shared/core/errors";
 import { logger } from "../../shared/services/logger";
@@ -26,8 +26,8 @@ import { PostCreateEvent } from "./xWebhook.schema";
  * flow: it reports what it decided and lets the coordinator branch.
  */
 export type IngestionResult =
-    | { status: typeof Decision.INGESTED; post: IngestedPost; account: MonitoredAccount }
-    | { status: typeof Decision.DISCARDED; reason: DiscardReason };
+    | { status: typeof DecisionOutcome.INGESTED; post: IngestedPost; account: MonitoredAccount }
+    | { status: typeof DecisionOutcome.DISCARDED; reason: DiscardReason };
 
 /**
  * Builds the CRC challenge response body X polls for on webhook registration.
@@ -68,8 +68,8 @@ async function discard(
     await insertDecisionLog({
         ingestedPostId: null,
         platformPostId: event.data.id,
-        stage: PipelineStage.TWEET_RECEIVED,
-        decision: Decision.DISCARDED,
+        stage: DecisionStage.TWEET_RECEIVED,
+        decision: DecisionOutcome.DISCARDED,
         reason,
         metadata: {
             authorId: event.data.author_id,
@@ -78,7 +78,7 @@ async function discard(
         }
     });
 
-    return { status: Decision.DISCARDED, reason };
+    return { status: DecisionOutcome.DISCARDED, reason };
 }
 
 /**
@@ -129,13 +129,13 @@ export async function receiveEvent(
     await insertDecisionLog({
         ingestedPostId: ingestedPost.id,
         platformPostId,
-        stage: PipelineStage.TWEET_RECEIVED,
-        decision: Decision.INGESTED,
+        stage: DecisionStage.TWEET_RECEIVED,
+        decision: DecisionOutcome.INGESTED,
         reason: null,
         metadata: null
     });
 
-    return { status: Decision.INGESTED, post: ingestedPost, account };
+    return { status: DecisionOutcome.INGESTED, post: ingestedPost, account };
 }
 
 /**

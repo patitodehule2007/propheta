@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 import { config } from "../../config";
-import { DecisionOutcome, DecisionStage } from "../../shared/core/decisionLog.constants";
+import { DecisionOutcome, DecisionStage, DiscardReason } from "../../shared/core/decisionLog.constants";
 import { logger } from "../../shared/services/logger";
 import { insertDecisionLog } from "../../repositories/postgres/ingestion.repository";
 import { extractUrls } from "../scraping/scrape.service";
@@ -37,17 +37,19 @@ interface ToolLoopResult {
  * Always writes exactly one `AGENT_ANALYSIS` decision_log row — on success
  * it is `CLASSIFIED` with the classification in metadata, on any failure it
  * is `DISCARDED` with `reason: "agent_error"`. Never throws: this is called
- * fire-and-forget from `ingestion.service.ts` after a post is ingested.
+ * fire-and-forget from `orchestrator.service.ts` after a post is enriched.
  *
  * @param post - the ingested post to analyze
+ * @returns The classification on success, or `null` when analysis was
+ * skipped or failed — the caller's signal to stop the pipeline here.
  */
-export async function runPostAnalysis(post: AgentPostInput): Promise<void> {
+export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassification | null> {
     if (!config.anthropic.apiKey) {
         logger.warn(
             { platformPostId: post.platformPostId },
             "ANTHROPIC_API_KEY not configured, skipping agent analysis"
         );
-        return;
+        return null;
     }
 
     try {
@@ -66,6 +68,8 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<void> {
                 stopReason: loopResult.stopReason
             }
         });
+
+        return classification;
     } catch (err) {
         logger.error({ err, platformPostId: post.platformPostId }, "Agent post-analysis failed");
         await insertDecisionLog({
@@ -73,9 +77,10 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<void> {
             platformPostId: post.platformPostId,
             stage: DecisionStage.AGENT_ANALYSIS,
             decision: DecisionOutcome.DISCARDED,
-            reason: "agent_error",
+            reason: DiscardReason.AGENT_ERROR,
             metadata: null
         });
+        return null;
     }
 }
 
