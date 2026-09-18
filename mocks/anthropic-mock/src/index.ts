@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import express, { Request, Response } from "express";
 
 import { config } from "./config";
-import { buildClassification, FIXTURES } from "./state";
+import { buildClassification, buildTradeProposal, extractOverrides, FIXTURES } from "./state";
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -28,28 +28,67 @@ app.get("/fixtures/:name", (req: Request, res: Response) => {
 // from interfering with each other.
 
 const URL_REGEX = /https?:\/\/[^\s<]+/;
+const TICKER_REGEX = /"ticker":"([^"]+)"/g;
 
 interface MockMessage {
     role: string;
     content: unknown;
 }
 
+/**
+ * `agent.service.ts` (classification) and `selectionAgent.service.ts` (gate 3)
+ * both call `/v1/messages` with the same shape; only the `system` prompt text
+ * tells them apart, since this mock is stateless and derives everything from
+ * the request body. Gate 3's Phase A (`SELECTION_SYSTEM_PROMPT`) and Phase B
+ * (`PROPOSAL_SYSTEM_PROMPT`) are two different strings, so both markers are
+ * checked.
+ */
+function isSelectionStage(system: unknown): boolean {
+    return (
+        typeof system === "string" &&
+        (system.includes("market-selection stage") || system.includes("proposal stage of Propheta"))
+    );
+}
+
+/** Candidate tickers appear as `"ticker":"..."` in the JSON candidate table. */
+function extractCandidateTickers(text: string): string[] {
+    return Array.from(text.matchAll(TICKER_REGEX), (match) => match[1]);
+}
+
 app.post("/v1/messages", (req: Request, res: Response) => {
-    const body = req.body as { model?: string; messages?: MockMessage[]; output_config?: unknown };
+    const body = req.body as { model?: string; messages?: MockMessage[]; output_config?: unknown; system?: unknown };
     const model = body.model ?? "claude-sonnet-5";
     const messages = body.messages ?? [];
     const firstUserContent = String(messages[0]?.content ?? "");
     const urlMatch = firstUserContent.match(URL_REGEX);
+    const selectionStage = isSelectionStage(body.system);
 
     if (body.output_config) {
-        // Phase B: the no-tools structured classification call.
-        const classification = buildClassification(urlMatch ? [urlMatch[0]] : []);
+        // Phase B: the no-tools structured extraction call.
+        if (selectionStage) {
+            const proposal = buildTradeProposal(extractCandidateTickers(firstUserContent));
+            res.status(200).json(textResponse(model, JSON.stringify(proposal), "end_turn"));
+            return;
+        }
+        const classification = buildClassification(urlMatch ? [urlMatch[0]] : [], extractOverrides(firstUserContent));
         res.status(200).json(textResponse(model, JSON.stringify(classification), "end_turn"));
         return;
     }
 
     // Phase A: the tool-calling loop.
     const assistantTurns = messages.filter((message) => message.role === "assistant").length;
+
+    if (selectionStage) {
+        const tickers = extractCandidateTickers(firstUserContent);
+        if (assistantTurns === 0 && tickers[0]) {
+            res.status(200).json(
+                toolUseResponse(model, "get_market_rules", { ticker: tickers[0] }, "Checking the settlement rules.")
+            );
+            return;
+        }
+        res.status(200).json(textResponse(model, "The candidate's rules match the post.", "end_turn"));
+        return;
+    }
 
     if (assistantTurns === 0) {
         res.status(200).json(
