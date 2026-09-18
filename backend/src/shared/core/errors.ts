@@ -45,8 +45,18 @@ export class AuthenticationError extends AppError {
  * unexpected response.
  */
 export class ExternalServiceError extends AppError {
-    constructor(message: string) {
+    /**
+     * The upstream HTTP status, when known. Never sent to the client (the
+     * middleware only reads `statusCode`/`code`/`message`) -- kept for
+     * callers that need to distinguish upstream failure modes internally,
+     * e.g. treating a Kalshi 409 (duplicate client_order_id) as idempotent
+     * success rather than a genuine error.
+     */
+    public readonly upstreamStatus?: number;
+
+    constructor(message: string, upstreamStatus?: number) {
         super(502, "EXTERNAL_SERVICE_ERROR", message);
+        this.upstreamStatus = upstreamStatus;
     }
 }
 
