@@ -1,10 +1,15 @@
 # Trade decision stage — plan
 
-> **Status: design only. Nothing described here is implemented.** No file in
-> `backend/src/` corresponds to this document yet. It is the plan for the
-> stages `docs/backend/decisionPipeline.md` and `docs/backend/agent.md` both
-> list under "Not implemented yet": market matching, trade decision, risk
-> validation and order execution.
+> **Status: implemented.** `backend/src/modules/trading/` implements the six
+> gates below — see `docs/backend/trading.md` for the as-built module doc
+> (files, configuration table, testing). This document remains the design
+> record; where the implementation deviates, the deviation is noted inline
+> and cross-referenced from `trading.md`. Three deltas from this plan:
+> the quote feed is REST polling for v1, not the WebSocket in §5.6
+> ("Quote feed" decision below); estimator C (`SURVIVAL`) is not implemented,
+> always falling through to `TOPIC_TABLE`; and open decision 8 (the exit
+> order's book-side mapping) still needs confirmation against a live Kalshi
+> account before `DRY_RUN=false` is used for real capital.
 
 Covers the step after `AGENT_ANALYSIS`: turning a classified post into a
 specific Kalshi ticker and side — or, far more often, into a logged reason for

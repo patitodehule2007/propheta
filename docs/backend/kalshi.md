@@ -6,8 +6,9 @@ trades on. It signs, sends and types requests; it holds no domain logic. Market
 matching, risk validation and the dry-run guard live in the services that call
 it.
 
-Nothing HTTP-facing is exposed yet: no routes, no controllers. This module is
-the seam later pipeline stages call.
+Nothing HTTP-facing is exposed yet: no routes, no controllers. This is the
+seam `docs/backend/trading.md`'s market cache, quote poller and execution
+gate all call.
 
 ## Files
 
@@ -96,10 +97,27 @@ cached.
 | `getOrder` | `GET /portfolio/orders/{order_id}` |
 | `createOrder` | `POST /portfolio/events/orders` |
 | `cancelOrder` | `DELETE /portfolio/events/orders/{order_id}` |
+| `getMarketOrderbooks` | `GET /markets/orderbooks` |
+| `getSeriesList` | `GET /series` |
+| `getSeries` | `GET /series/{ticker}` |
+| `getTagsByCategories` | `GET /search/tags_by_categories` |
+| `getSeriesFeeChanges` | `GET /series/fee_changes` |
 
 Writes use the V2 order paths (`/portfolio/events/orders`). The legacy
 `/portfolio/orders` write endpoint is deprecated by Kalshi no earlier than
 2026-05-06.
+
+`getMarketOrderbooks` is the batch order-book read (up to 100 tickers per
+call) the quote poller uses instead of one request per market. `getSeriesList`
+/ `getSeries` carry the `fee_type` / `fee_multiplier` a series' own market
+cache row needs — never assume the default 7% quadratic fee. `getTagsByCategories`
+is not text search — it is filter discovery over the real Kalshi tag
+vocabulary, used to build and periodically review `topic_market_map`
+(`docs/backend/trading.md`), never called on the trading critical path.
+
+**Still not covered**: the WebSocket feed (§5.6 — order book deltas, fills,
+market lifecycle), `/markets/orderbooks` batch depth options beyond the
+default, order amend/decrease, batched order endpoints, and `/account/limits`.
 
 ### Pagination
 
@@ -137,9 +155,18 @@ status and payload deliberately stay out of it.
 
 ## Testing
 
-No Kalshi mock service and no integration tests yet — they land with the
-execution stage, alongside a mock under `mocks/` in the pattern of
-`mocks/x-api-mock`.
+`mocks/kalshi-mock/` (Express, following the shape of `mocks/x-api-mock`)
+implements the subset of the surface `docs/backend/trading.md` actually calls:
+`/series`, `/search/tags_by_categories`, `/markets`, `/markets/{ticker}`,
+`/markets/{ticker}/orderbook`, `/markets/orderbooks`, and
+`POST /portfolio/events/orders` (assumes an immediate full fill — there is no
+matching engine — and returns **409 on a repeated `client_order_id`** so the
+idempotent-success path is exercised). Fixtures: one series (`KXTARIFF`,
+tags `Trade`/`Tariffs`) and one open market (`KXTARIFF-25-A`) so candidate
+assembly has something real to find. Wired into
+`tests/jest/docker-compose.jest.yml` as `kalshi-mock-test`, reached by
+pointing `KALSHI_API_BASE_URL` at it — same pattern as `ANTHROPIC_BASE_URL`.
+Test credentials are a throwaway RSA-2048 key the mock never validates.
 
 Manual check against demo, with credentials in `.env`:
 

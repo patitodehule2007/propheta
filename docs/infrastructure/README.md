@@ -88,6 +88,14 @@ Executable database objects never live in migrations; they are rebuilt on every
 | `X_WEBHOOK_CONSUMER_SECRET` | Shared secret for webhook signature verification (backend) / signing (mock) | — |
 | `X_BEARER_TOKEN`     | X API bearer token (unused while `X_API_BASE_URL` points at the mock) | — |
 | `DRY_RUN`            | Disables order-sending side effects pipeline-wide | `true`             |
+| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` / `ANTHROPIC_BASE_URL` | Classifier + selection-agent model (`docs/backend/agent.md`) | empty in dev / `claude-sonnet-5` / unset |
+| `KALSHI_API_BASE_URL` / `KALSHI_API_KEY_ID` / `KALSHI_PRIVATE_KEY` | Trading venue credentials (`docs/backend/kalshi.md`) | demo URL / empty in dev / empty in dev |
+| `SCRAPE_CACHE_TTL_SECONDS` / `SCRAPE_CACHE_NEGATIVE_TTL_SECONDS` | Redis scrape cache TTLs (`docs/backend/agent.md`) | `21600` / `900` |
+
+The full `TRADE_*` / `EXIT_*` / `QUOTE_*` / `MARKET_CACHE_*` trading gate and
+exit-policy configuration (30+ vars) is tabulated in
+`docs/backend/trading.md`'s own Configuration section rather than duplicated
+here.
 
 ## Running Locally
 

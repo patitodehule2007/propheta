@@ -49,6 +49,38 @@ x-test-environment: &test-environment
     SCRAPE_CACHE_TTL_SECONDS: 21600
     SCRAPE_CACHE_NEGATIVE_TTL_SECONDS: 900
 
+    # Throwaway RSA-2048 key generated for this test fixture only -- signs
+    # requests to kalshi-mock-test, which never checks the signature. Not
+    # used anywhere else and grants access to nothing real.
+    KALSHI_API_BASE_URL: http://kalshi-mock-test:4300
+    KALSHI_API_KEY_ID: test_kalshi_key_id
+    KALSHI_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDR/tKinOEsUpax\nVcNQ62kWcUdg2mSg835Z3hG5uh+YUwOGe2HqJRQ4XbSEbdXLa2gLmudgVp6yN5xM\nKGt5xJKyoAl4ivoYvBn0yA5fcUE8tUqYJekYxV0dezNAnRnHHrHchFJQtoJKGp7n\nwC/gHyDOZQtG/9YTvU4Ud890fn2uZBVbO9F/0jzsra0mhBq50olcMsO1g6iyyaDY\nNOCc6o0TigsCSUS77vHNoWGKeUUPQN9EqavaR6Kx5xU0PLePUlPoFtXbwt1+M51v\nmJUZS5ptqNbK58tgqDcA2Gpbo+rE8/FoPh2sTCMO4jNJGigxmhVi0B+A9Gl8R/KB\nDkYVoNtJAgMBAAECggEAC1DTcd7JRXWn2CN6dGRTE9oD0iTCkme8kcQlKWBtrmwe\nvwLsCk14MvddsFsoz57YivOMb0ULpSfY/MOa0wN0Mjrsd7npcybDsUyMdbkpHkfY\nnq1AS8zq0Rlf8CXnCzNMu0jIFMBY8fxQPsW87rNOtcB9JJTJqOOlDvZL0Ae25ww1\nmd8Hlr/RsC8L6lAtzhnnqYUSCBoxRAZGsIaLaoukysRS4tQFecsrlKZdf7RSKdAU\nHKChStpTmHYQu9oVEmGvoEJjbYpcqzaoTToyWYut0BTWfeOB6uL22M1JBeFmI5IC\n8KolrUjUL7TCMCcC92h12Ys32gv6fnkohWN7mx81pwKBgQDtCkZPt0UCfgrB5rOZ\nt6cp0gpZxB8FB1xyVQO2uJju4acgV4aSc+E6GfLUwXrXSCNVeumRIm/OYARmnRPc\nR4suBiLLZEaRmPQRKQyKd8VaGAzfFMZ7cgd+IJrbkfxaaelDLK4dU/Qi5uA/Xktw\nLRBi7r5LUQyKyDnOlTmXU9LWPwKBgQDiysUMzMNGP3bfsnzOHjU/whE/2YcLrX1L\nmHN12vaU7C2t8f013XIgPwMr+BbnaDU2OljGabnburHrBGqAj6t0wZXTc59d3h7a\niZCHxKTaP74Rrs8DbRiRdUVviEYZXWMCauR21e7a91WUBNEsxPgU0peeFw3Hi8/f\nFpBJzne8dwKBgFn+1qcZW9gQZqErp/Cqq4rTNh7SuTw9iTnXUSukdlvrzHoZAPzF\nhjN6+pkQREVMHC4uFlOGEZD3H3SeGpY9i3gT2E4Eak6JFdEWFq7TvlfwXaKszpa7\numCGnITUrkzdfTSF2C1GXKCLq4QjltymH1yQbCtIQEzIrDnkqhLsPlYdAoGBALR3\nUfHrhoABxGAhMbr6wrinfv5l5FZgiVF8UHQ59vluLrM52pngSw5p1eZJFkCx5ZXv\nO/E29FRq7WTsMKt4p6DS4pxOZ0RUmgygZsgCrIOXMXH0vnold+VXghdMQyuv6jdk\nQ8RkXBsVsZ2Fb8XGPvqi0U9VXPuqv5Dv7YUtrI3lAoGBAJ6/k/MEgOGY6NgVOP06\nYH6JdRF02YMS+J2I3S56NGC+5jyUZ35oKyleso0bnJuqk0TVkAtM0sRiuI9IYs4j\nJSZcuXnizieKNBfIvvtbeAqufdUT78PKuOKK2wTr9gBMYq3Sm1F53eCsIDCsSbEQ\nip6Xhlw7qFdV9o2+xv2qEk0g\n-----END PRIVATE KEY-----"
+    KALSHI_TIMEOUT_MS: 10000
+
+    TRADE_MIN_CONFIDENCE: 0.6
+    MAX_SPREAD_CENTS: 4
+    MAX_SLIPPAGE_CENTS: 10
+    MIN_NET_EDGE_CENTS: 2
+    MAX_TRADE_EXPOSURE_PCT: 2
+    MAX_TOPIC_EXPOSURE_PCT: 5
+    MAX_DAILY_LOSS_PCT: 5
+    MAX_ORDERS_PER_MINUTE: 3
+    SELECTION_MAX_ITERATIONS: 2
+    SELECTION_MAX_TOOL_CALLS: 6
+    TRADE_NOVELTY_WINDOW_HOURS: 6
+    TRADE_MAX_CANDIDATES: 10
+    TRADE_MIN_HORIZON_MINUTES: 5
+    # Comfortably past the kalshi-mock fixture's 7-day close_time, so
+    # candidate assembly's close-time filter never excludes it.
+    TRADE_HORIZON_MINUTES: 20000
+    TRADE_MIN_SERIES_VOLUME: 0
+    TRADE_CAPITAL_BASE_CENTS: 100000
+    QUOTE_POLL_ENABLED: "false"
+    EXIT_SWEEP_INTERVAL_MS: 5000
+    # Fast enough that the startup refresh plus one interval tick populate the
+    # market cache well within a test's own timeout.
+    MARKET_CACHE_REFRESH_MS: 2000
+
     DRY_RUN: "true"
 
 services:
@@ -141,6 +173,22 @@ services:
         networks:
             - test-network
 
+    kalshi-mock-test:
+        build: ../../mocks/kalshi-mock
+        env_file:
+            - ../../.env.defaults
+        environment:
+            <<: *test-environment
+            PORT: 4300
+        healthcheck:
+            test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:4300/health || exit 1"]
+            interval: 5s
+            timeout: 3s
+            retries: 12
+            start_period: 10s
+        networks:
+            - test-network
+
     backend-test:
         build: ../../backend
         env_file:
@@ -153,6 +201,8 @@ services:
             x-api-mock-test:
                 condition: service_healthy
             anthropic-mock-test:
+                condition: service_healthy
+            kalshi-mock-test:
                 condition: service_healthy
         environment:
             <<: *test-environment

@@ -2,7 +2,7 @@
 
 `backend/src/modules/desicionPipeline/` (note the misspelled directory — kept
 as-is for now). Coordinates the stages a post passes through, from the webhook
-delivery to (eventually) an order. Ingestion and link enrichment exist today.
+delivery to an order (or a logged reason for not placing one).
 
 ## The orchestrator
 
@@ -19,14 +19,23 @@ continues:
    reason). A discard stops the pipeline; nothing downstream runs.
 2. **LINKS_ENRICHED** — scrapes the links the post carries (below).
 
-Stages after enrichment — classification, market matching, risk validation,
-order execution — are **not implemented**. Nothing in this module sends orders.
+After enrichment, `runPipeline` fires `runPostPipeline` **without awaiting
+it** and returns — classification (`docs/backend/agent.md`) and, when it
+succeeds, the six trade-decision gates (`docs/backend/tradeDecision.md`) run
+after the webhook response has already gone back to X. Together they can run
+10-60s (see `agent.md`'s "Known gap"), far longer than a webhook response
+should block for. Every gate still writes its own `decision_log` row, so the
+audit trail is complete even though the HTTP response returned long before it
+was.
 
-Stage, decision and discard-reason values are **not string literals at the call
-site**: they live in `backend/src/shared/core/decisionLog.constants.ts`
-(`PipelineStage`, `Decision`, `DiscardReason`). They sit in `shared/core`
-rather than in this module because ingestion writes them too, and this module
-already imports ingestion — a module-local home would be a circular dependency.
+Stage and decision values are **not string literals at the call site**: they
+live in `backend/src/shared/core/decisionLog.constants.ts` (`DecisionStage`,
+`DecisionOutcome`, `DiscardReason`, plus the trade-decision reason
+vocabularies — `PreGateReason`, `CandidateAssemblyReason`, `NoTradeReason`,
+`VetoReason`, `ExitReason`). They sit in `shared/core` rather than in this
+module because ingestion, the agent module and the trading module all write
+them, and this module already imports ingestion — a module-local home would be
+a circular dependency.
 
 ## Link enrichment
 
@@ -120,13 +129,16 @@ Because a post now accumulates one `decision_log` row per stage, the
 `waitForDecision` helper takes an optional `stage` — without it the most recent
 row wins, which is only unambiguous for posts that stop at ingestion.
 
+## What runs after this module
+
+Classification (`docs/backend/agent.md`) and the six trade-decision gates
+(`docs/backend/trading.md`) are triggered from `runPostPipeline` in this
+module's own orchestrator, fire-and-forget after enrichment. This module
+itself still only ingests and enriches — it never sends an order; the wiring
+just hands off to the next stage.
+
 ## Not implemented yet
 
-Market matching, risk validation, and order execution. Nothing in this module
-sends orders. Classification now runs in the agent module
-(`docs/backend/agent.md`), triggered from ingestion rather than orchestrated
-here.
-
-The stages after classification are designed but unwritten:
-`docs/backend/tradeDecision.md` is the plan — the five gates from a classified
-post to an order, the tool catalog the selection agent gets, and the prompts.
+The WebSocket quote feed (§5.6) — v1 uses REST polling instead, see
+`docs/backend/trading.md`. Estimator C (`SURVIVAL`) for the exit horizon.
+Manual kill-switch triggering from a dashboard.
