@@ -48,6 +48,14 @@ export interface DerivedQuote {
  * Derives the full YES/NO bid/ask picture from a bids-only order book.
  * Kalshi publishes bids only: `yes_ask = 1.00 - best_no_bid` and
  * `no_ask = 1.00 - best_yes_bid` (YES + NO always sum to $1.00).
+ *
+ * TODO: `topOfBookContracts` is the depth at the best YES *bid*, but gate 4
+ * (`riskGate.service.ts`) uses it as the depth available at the *ask* it buys
+ * from. Buying YES at `yes_ask` lifts the best NO bid, so the YES-side depth
+ * cap should read `no_dollars`, and buying NO should read `yes_dollars`.
+ * Sizing is clamped against the wrong side of the book today. Fix by exposing
+ * per-side ask depth (e.g. `yesAskContracts` / `noAskContracts`) and picking
+ * by `outcomeSide` in the risk gate.
  */
 export function deriveQuote(orderbook: Orderbook): DerivedQuote {
     const yesBidCents = bestBidCents(orderbook.yes_dollars);

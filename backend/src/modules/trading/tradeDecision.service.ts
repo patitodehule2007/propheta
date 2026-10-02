@@ -54,7 +54,9 @@ export async function runTradeDecision(input: TradeDecisionInput): Promise<void>
             outcomeSide: proposal.outcomeSide,
             fairProbability: proposal.fairProbability,
             conviction: proposal.conviction,
-            horizonModelMinutes: proposal.horizonMinutes,
+            // The schema does not constrain horizonMinutes to an integer; the
+            // DB column does, and a fractional value would fail the insert.
+            horizonModelMinutes: proposal.horizonMinutes === null ? null : Math.round(proposal.horizonMinutes),
             noTradeReason: isBuy ? null : proposal.noTradeReason,
             status: isBuy ? TradeProposalStatus.PROPOSED : TradeProposalStatus.NO_TRADE,
             reasoning: proposal.reasoning,

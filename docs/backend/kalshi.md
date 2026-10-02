@@ -161,9 +161,32 @@ implements the subset of the surface `docs/backend/trading.md` actually calls:
 `/markets/{ticker}/orderbook`, `/markets/orderbooks`, and
 `POST /portfolio/events/orders` (assumes an immediate full fill — there is no
 matching engine — and returns **409 on a repeated `client_order_id`** so the
-idempotent-success path is exercised). Fixtures: one series (`KXTARIFF`,
-tags `Trade`/`Tariffs`) and one open market (`KXTARIFF-25-A`) so candidate
-assembly has something real to find. Wired into
+idempotent-success path is exercised).
+
+Fixtures (`mocks/kalshi-mock/src/state.ts`), with tags picked against
+`database/init/sql/seed/trading_topic_map.sql` so each series is reachable
+from a known set of topics only:
+
+| Series | Tags | Reached from | Markets |
+| --- | --- | --- | --- |
+| `KXTARIFF` | `Inflation` | `TARIFFS_TRADE` | `KXTARIFF-25-A` (happy path) |
+| `KXTEST` | `Fed`, `Iran`, `Crypto` | `MONETARY_POLICY_FED`, `INTERNATIONAL_CONFLICT`, `CRYPTO_REGULATION` | one per gate/exit scenario: `-BASE`, `-SL`, `-TP`, `-TL`, `-MC`, `-WIDE` (12c spread), `-THIN` (0.5 contracts at the top), `-NOASK` (no NO bids), `-CLOSING` (closes 20 min after mock start), `-SLIP` |
+| `KXLOWVOL` | `Congress` | `APPOINTMENTS_PERSONNEL`, `SHUTDOWN_BUDGET` | `KXLOWVOL-26-A`, series volume 10 (below the test stack's `TRADE_MIN_SERIES_VOLUME`) |
+
+`IMMIGRATION` deliberately resolves to no series (`no_open_market`). When
+the seed's tags change, re-check this table: a tag shared with another topic
+makes a fixture series a candidate there too.
+
+Test-only control endpoints (not part of the real API), used by the
+exit-supervision tests:
+
+- `PUT /mock/orderbooks/:ticker` — replace a ticker's book
+  (`{ yes_dollars, no_dollars }`, `[price, count]` string tuples).
+- `PATCH /mock/markets/:ticker` — move `close_time`; the backend sees it on
+  the next market-cache refresh.
+- `POST /mock/reset` — restore every market and book to its startup fixture.
+
+Wired into
 `tests/jest/docker-compose.jest.yml` as `kalshi-mock-test`, reached by
 pointing `KALSHI_API_BASE_URL` at it — same pattern as `ANTHROPIC_BASE_URL`.
 Test credentials are a throwaway RSA-2048 key the mock never validates.

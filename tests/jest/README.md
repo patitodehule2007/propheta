@@ -34,3 +34,10 @@ The pre-push git hook runs `tests/jest/run.sh` automatically.
 - Use the standard Jest API (`describe` / `it` / `expect`).
 - Name tests `should {expected behavior} when {condition}`.
 - Never hardcode IDs, dates, or values — use factories, fixtures, or builders.
+- Trading tests that must pass the pre-gate need their own
+  (author, topic, direction): add one to `Signals` in
+  `src/helpers/tradingFixtures.ts` rather than reusing one, or the novelty
+  heuristic will veto it. See `docs/backend/trading.md`, "Testing".
+- Tests that move kalshi-mock prices or close times (`src/helpers/kalshiMock.ts`)
+  must call `resetKalshiMock()` afterwards and use a ticker no other test
+  opens positions on.

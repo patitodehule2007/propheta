@@ -2,7 +2,17 @@ import { randomUUID } from "crypto";
 import express, { Request, Response } from "express";
 
 import { config } from "./config";
-import { MARKETS, MockOrder, ORDERBOOKS, ORDERS_BY_CLIENT_ID, SERIES } from "./state";
+import {
+    MARKETS,
+    MockOrder,
+    MockOrderbook,
+    ORDERBOOKS,
+    ORDERS_BY_CLIENT_ID,
+    replaceOrderbook,
+    resetState,
+    SERIES,
+    updateMarketCloseTime
+} from "./state";
 
 const app = express();
 app.use(express.json());
@@ -198,6 +208,59 @@ app.delete("/portfolio/events/orders/:orderId", (req: Request, res: Response) =>
         reduced_by: "0.00",
         ts_ms: Date.now()
     });
+});
+
+// --- Test-only controls -----------------------------------------------------
+// Not part of the real Kalshi API. Let integration tests move prices and close
+// times so exit supervision (gate 6) has something to react to, then restore
+// the fixtures so the next test starts clean.
+
+function isPriceLevelList(value: unknown): boolean {
+    return (
+        Array.isArray(value) &&
+        value.every(
+            (level) =>
+                Array.isArray(level) &&
+                level.length === 2 &&
+                typeof level[0] === "string" &&
+                typeof level[1] === "string"
+        )
+    );
+}
+
+app.put("/mock/orderbooks/:ticker", (req: Request, res: Response) => {
+    const body = req.body as Partial<MockOrderbook>;
+    if (!isPriceLevelList(body.yes_dollars) || !isPriceLevelList(body.no_dollars)) {
+        res.status(400).json({ error: "yes_dollars and no_dollars must be [price, count] string tuples" });
+        return;
+    }
+
+    const orderbook: MockOrderbook = { yes_dollars: body.yes_dollars ?? [], no_dollars: body.no_dollars ?? [] };
+    if (!replaceOrderbook(String(req.params.ticker), orderbook)) {
+        res.status(404).json({ error: "orderbook not found" });
+        return;
+    }
+    res.status(200).json({ orderbook_fp: orderbook });
+});
+
+app.patch("/mock/markets/:ticker", (req: Request, res: Response) => {
+    const closeTime = (req.body as { close_time?: unknown }).close_time;
+    if (typeof closeTime !== "string" || Number.isNaN(Date.parse(closeTime))) {
+        res.status(400).json({ error: "close_time must be an ISO-8601 timestamp" });
+        return;
+    }
+
+    const market = updateMarketCloseTime(String(req.params.ticker), closeTime);
+    if (!market) {
+        res.status(404).json({ error: "market not found" });
+        return;
+    }
+    res.status(200).json({ market });
+});
+
+app.post("/mock/reset", (_req: Request, res: Response) => {
+    resetState();
+    res.status(204).send();
 });
 
 app.listen(config.port, "0.0.0.0", () => {

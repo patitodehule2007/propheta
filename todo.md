@@ -28,11 +28,12 @@ Without these the pipeline cannot reach gate 3 (selection agent).
   - [ ] Call `POST /api/webhooks/x/registration` so the mock has a webhook.
   - [ ] Hit `/mock/simulate-post` via `docker compose exec`, or add a dev-only
         port mapping for `x-api-mock`.
-- [ ] **Verify the `topic_market_map` tags** in
+- [x] **Verify the `topic_market_map` tags** in
       `database/init/sql/seed/trading_topic_map.sql` against a live
       `GET /search/tags_by_categories` response (`getTagsByCategories`) on demo.
       Guessed tags such as `"Fed"` or `"Geopolitics"` may match no series, and the
-      demo catalogue may differ from production.
+      demo catalogue may differ from production. *As of 2/10/26 this is done, but*
+      *we should probably check it thorughly*
 - [ ] **Verify `defer_loading` against the real Anthropic API** with one request
       (`docs/backend/agent.md`, "Verification gap"). If rejected, every
       classification fails; the fallback is dropping `deferLoading` in
@@ -55,12 +56,14 @@ Without these, the run will most likely end in `NO_TRADE` at every gate.
       seeded accounts or lower the window for the test.
 - [ ] **Confirm `ANTHROPIC_MODEL=claude-sonnet-5` resolves** on the real API; the
       mocks never validated it.
-- [ ] **Watch gate 6 closely.** Integration tests cover the happy path and the
-      gate 1 / gate 2 vetoes only; there is no exit-supervisor integration test.
-      The first dry run is the first time simulated exits run against real
-      quotes — check the `EXIT` rows in `decision_log`.
-  - [ ] Add an integration test for exit supervision (stop loss, take profit,
+- [ ] **Watch gate 6 closely.** Integration tests now cover all four
+      dry-run exits against kalshi-mock, but the first dry run is the first
+      time simulated exits run against real quotes — check the `EXIT` rows in
+      `decision_log`.
+  - [x] Add an integration test for exit supervision (stop loss, take profit,
         time limit, market close).
+  - [ ] Cover `kill_switch`, `order_rate_limit` and `exposure_cap_topic` (no
+        integration test: they poison shared state; needs backend unit tests).
 
 ## Non-blockers (documented v1 gaps)
 
@@ -96,6 +99,9 @@ Not required for a dry run; needed before production or live capital.
       amend/decrease, batched order endpoints, `/account/limits`.
 - [ ] **Re-review the topic map against production tags** before enabling real
       trading (separate from the demo check above).
+- [ ] **Gate 4 depth cap reads the wrong book side.** `topOfBookContracts` is
+      the YES-bid size, but buying YES lifts the NO bid (TODO on `deriveQuote`
+      in `backend/src/modules/trading/pricing.ts`).
 - [ ] **Doc drift:** `docs/backend/tradeDecision.md`'s "Enforcement" section still
       describes a Redis sorted set + WebSocket ticks; the implementation is a DB
       sweep + REST polling (documented in `docs/backend/trading.md`).

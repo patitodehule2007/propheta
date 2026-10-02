@@ -230,8 +230,10 @@ house style in `sql/functions/ingestion/`. `get_positions_due_for_exit` and
 
 `database/init/sql/seed/trading_topic_map.sql` — the hand-written topic →
 Kalshi tags mapping (open decision 4: human-reviewed, never generated).
-Review the tags against a live `GET /search/tags_by_categories` response
-before enabling real trading.
+Tags were reconciled against the live `GET /search/tags_by_categories`
+response on 2/10/26 (marker in the file). Re-reconcile when Kalshi's
+vocabulary changes. The seed upserts (`ON CONFLICT (topic) DO UPDATE`), so
+`seed` refreshes existing rows; `seed-if-empty` still skips a populated DB.
 
 ## Configuration
 
@@ -278,20 +280,52 @@ decision 8's marketable-limit bound). Defaults exactly match the design doc.
 extension for the selection-agent prompts (distinguished from the classifier
 by checking the `system` prompt text, since both share `/v1/messages`).
 
-`tests/jest/src/trading/tradeDecision.test.ts`:
+Tests drive each gate through anthropic-mock's post-text markers
+(`docs/backend/agent.md`, "Testing") and kalshi-mock's per-scenario markets
+and control endpoints (`docs/backend/kalshi.md`, "Testing"). All in
+`tests/jest/src/trading/`:
 
-- **happy path** — a tariff post through the full chain lands `ORDER` /
-  `ORDER_SIMULATED` with `stopPriceCents`, `targetPriceCents` and
-  `deadlineAt` all present.
-- gate 2 veto — a topic with no cached market → `TRADE_CANDIDATES` /
-  `NO_TRADE` / `no_open_market`.
-- gate 1 veto — confidence below `TRADE_MIN_CONFIDENCE` → `TRADE_CANDIDATES`
-  / `NO_TRADE` / `low_confidence`.
+| File | Gate | Outcomes covered |
+| --- | --- | --- |
+| `tradeDecision.test.ts` | 1-5 | happy path `ORDER_SIMULATED` with full exit policy; `no_open_market`; `low_confidence` |
+| `preGate.test.ts` | 1 | `topic_not_tradable`, `direction_unclear`, `no_novelty` |
+| `candidateAssembly.test.ts` | 2 | `no_liquid_market` |
+| `selectionAgent.test.ts` | 3 | model `NO_TRADE` (reason passed through), `agent_error` |
+| `riskGate.test.ts` | 4, 5 | `hallucinated_ticker`, `market_not_open` (no ask), `spread_over_limit`, `slippage_over_limit`, `edge_below_cost`, `exposure_cap_trade`, `closing_too_soon` |
+| `exitSupervision.test.ts` | 6 | `EXIT_STOP_LOSS`, `EXIT_TAKE_PROFIT`, `EXIT_TIME_LIMIT`, `EXIT_MARKET_CLOSE` |
 
-Each test uses a distinct monitored account so the novelty heuristic never
-fires between unrelated test cases. `QUOTE_POLL_ENABLED=false` in the test
-environment — `getLiveOrCachedQuote`'s per-request fallback is what tests
-actually exercise, not the background poller.
+How the harder cases are reached:
+
+- **Novelty isolation.** The novelty window spans the whole run, so every
+  test that must pass gate 1 posts under its own (author, topic, direction)
+  — one registry, `Signals` in `tests/jest/src/helpers/tradingFixtures.ts`.
+- **Exits.** Each scenario opens a position on its own `KXTEST-*` ticker,
+  then moves that ticker's book (`PUT /mock/orderbooks/:ticker`) just past
+  the stop or target read from the `ORDER` row, or its close time inside
+  `EXIT_CLOSE_BUFFER_MINUTES`. `waitForExitDecision` finds the `EXIT` row
+  by `metadata.positionId`, since EXIT rows carry no platform post id.
+- **Time limit.** The test stack sets `EXIT_HORIZON_MODEL_WEIGHT=1` and
+  `EXIT_HORIZON_MIN_MINUTES=0.05`, so `[[horizon:0.1]]` gives a ~6s
+  deadline. Every other test keeps the mocked 180-minute horizon.
+- **Slippage.** With the poller off there is no pre-signal price, so the test
+  writes two samples straight into `quote:v1:KXTEST-SLIP`: one before the
+  signal, one dated in the future so it stays the "latest" quote.
+
+Other test-stack overrides: `MAX_ORDERS_PER_MINUTE=50` (a run opens several
+positions within seconds), `TRADE_MIN_SERIES_VOLUME=100`,
+`TRADE_MAX_CANDIDATES=20`, `EXIT_SWEEP_INTERVAL_MS=1000`.
+`QUOTE_POLL_ENABLED=false` — `getLiveOrCachedQuote`'s per-request fallback
+is what tests actually exercise, not the background poller.
+
+**Not covered by integration tests**, and why:
+
+- `kill_switch` and `order_rate_limit` (gate 1): tripping either vetoes every
+  later test in the run (for the rest of the day, or the next minute). There
+  is no backend unit-test setup to cover them in isolation yet.
+- `exposure_cap_topic` (gate 4): needs 4-5 concurrent positions in one topic,
+  which uses up most of the free novelty identities.
+- `ORDER_PLACED`, `ORDER_FAILED`, the 409 idempotent path and `EXIT_FAILED`
+  (gates 5-6): live mode only; the whole test stack runs `DRY_RUN=true`.
 
 ## Not implemented yet
 
@@ -301,4 +335,6 @@ reconciliation (partial fills, the `/portfolio/fills` feed). The live
 kill-switch endpoint reachable from a dashboard (§6.3 requires one; nothing
 here exposes it yet — the automatic daily-loss kill switch in gate 1 is not
 a substitute). Confirming open decision 8's exit-order book-side mapping
-against a live Kalshi account.
+against a live Kalshi account. Gate 4's depth cap reads the wrong side of the
+book: `topOfBookContracts` is the best YES *bid* size, but buying YES lifts
+the best NO bid (TODO on `deriveQuote` in `pricing.ts`).

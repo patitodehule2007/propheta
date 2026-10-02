@@ -34,7 +34,7 @@ export async function simulatePost(params: {
     return body.data;
 }
 
-interface Decision {
+export interface Decision {
     id: string;
     platformPostId: string;
     stage: string;
@@ -82,4 +82,31 @@ export async function listDecisionStages(platformPostId: string): Promise<string
     );
     const body = (await response.json()) as { data: { items: Decision[] } };
     return body.data.items.map((item) => item.stage).reverse();
+}
+
+// The decisions endpoint's own MAX_PAGE_SIZE: EXIT rows are newest-first, so
+// the one a test is waiting on is always on the first page.
+const EXIT_SCAN_PAGE_SIZE = 100;
+
+/**
+ * Polls the audit log until gate 6 writes an `EXIT` row for the given
+ * position, or the timeout elapses. EXIT rows carry no platform post id (the
+ * exit supervisor runs on its own sweep, detached from any post), so this
+ * scans the unfiltered, newest-first log for `metadata.positionId`.
+ */
+export async function waitForExitDecision(positionId: string, options: { timeoutMs?: number } = {}): Promise<Decision> {
+    const { timeoutMs = 15000 } = options;
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        const response = await fetch(`${BACKEND_URL}/api/webhooks/x/decisions?limit=${EXIT_SCAN_PAGE_SIZE}`);
+        const body = (await response.json()) as { data: { items: Decision[] } };
+        const decision = body.data.items.find(
+            (item) => item.stage === "EXIT" && item.metadata?.positionId === positionId
+        );
+        if (decision) return decision;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    throw new Error(`No EXIT decision_log entry for positionId=${positionId} within ${timeoutMs}ms`);
 }

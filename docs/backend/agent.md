@@ -280,6 +280,16 @@ also serves `GET /fixtures/:name` — small static HTML pages — so the real
 scraper (`webScraper.ts` → `scrapeCache.service.ts`) has something genuine to
 fetch and convert; only the LLM call is faked, not the scraping path.
 
+Tests steer the script with markers in the post text, which never match real
+posts:
+
+- Classification: `[[topic:X]]`, `[[direction:X]]`, `[[confidence:N]]`.
+- Selection agent (gate 3, read from the post embedded in the selection
+  prompt): `[[ticker:X]]` (propose this ticker, even one that is not a
+  candidate), `[[fair:N]]`, `[[horizon:N]]`, `[[selection:no_trade]]` (a
+  schema-valid `NO_TRADE`, reason `rules_mismatch`) and
+  `[[selection:invalid]]` (Phase B output that fails `tradeProposalSchema`).
+
 - `tests/jest/src/agent/analysis.test.ts` — a monitored-author post linking
   to a fixture ends up with an `AGENT_ANALYSIS` / `CLASSIFIED` row whose
   metadata matches the mock's scripted classification.

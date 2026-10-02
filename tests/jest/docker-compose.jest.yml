@@ -64,19 +64,31 @@ x-test-environment: &test-environment
     MAX_TRADE_EXPOSURE_PCT: 2
     MAX_TOPIC_EXPOSURE_PCT: 5
     MAX_DAILY_LOSS_PCT: 5
-    MAX_ORDERS_PER_MINUTE: 3
+    # A run opens several simulated positions within seconds (happy path, the
+    # first realDonaldTrump post, four exit scenarios); the production default
+    # of 3 would veto them as order_rate_limit depending on file order.
+    MAX_ORDERS_PER_MINUTE: 50
     SELECTION_MAX_ITERATIONS: 2
     SELECTION_MAX_TOOL_CALLS: 6
     TRADE_NOVELTY_WINDOW_HOURS: 6
-    TRADE_MAX_CANDIDATES: 10
+    # kalshi-mock's KXTEST series holds one market per scenario (10); every
+    # one must stay a candidate so `[[ticker:...]]` markers can pick it.
+    TRADE_MAX_CANDIDATES: 20
     TRADE_MIN_HORIZON_MINUTES: 5
     # Comfortably past the kalshi-mock fixture's 7-day close_time, so
     # candidate assembly's close-time filter never excludes it.
     TRADE_HORIZON_MINUTES: 20000
-    TRADE_MIN_SERIES_VOLUME: 0
+    # Above kalshi-mock's KXLOWVOL series (10) and below the others (5000), so
+    # gate 2's no_liquid_market branch is reachable.
+    TRADE_MIN_SERIES_VOLUME: 100
     TRADE_CAPITAL_BASE_CENTS: 100000
     QUOTE_POLL_ENABLED: "false"
-    EXIT_SWEEP_INTERVAL_MS: 5000
+    EXIT_SWEEP_INTERVAL_MS: 1000
+    # The model's horizon wins outright and the floor sits below a minute, so
+    # the time-limit exit test can force a ~6s deadline via `[[horizon:0.1]]`.
+    # Every other test keeps the mocked 180-minute horizon.
+    EXIT_HORIZON_MODEL_WEIGHT: 1
+    EXIT_HORIZON_MIN_MINUTES: 0.05
     # Fast enough that the startup refresh plus one interval tick populate the
     # market cache well within a test's own timeout.
     MARKET_CACHE_REFRESH_MS: 2000

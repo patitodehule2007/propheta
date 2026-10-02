@@ -2,7 +2,15 @@ import { randomUUID } from "crypto";
 import express, { Request, Response } from "express";
 
 import { config } from "./config";
-import { buildClassification, buildTradeProposal, extractOverrides, FIXTURES } from "./state";
+import {
+    buildClassification,
+    buildInvalidTradeProposal,
+    buildTradeProposal,
+    extractOverrides,
+    extractSelectionOverrides,
+    FIXTURES,
+    SelectionMode
+} from "./state";
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -66,7 +74,11 @@ app.post("/v1/messages", (req: Request, res: Response) => {
     if (body.output_config) {
         // Phase B: the no-tools structured extraction call.
         if (selectionStage) {
-            const proposal = buildTradeProposal(extractCandidateTickers(firstUserContent));
+            const overrides = extractSelectionOverrides(firstUserContent);
+            const proposal =
+                overrides.mode === SelectionMode.INVALID
+                    ? buildInvalidTradeProposal()
+                    : buildTradeProposal(extractCandidateTickers(firstUserContent), overrides);
             res.status(200).json(textResponse(model, JSON.stringify(proposal), "end_turn"));
             return;
         }
@@ -79,10 +91,11 @@ app.post("/v1/messages", (req: Request, res: Response) => {
     const assistantTurns = messages.filter((message) => message.role === "assistant").length;
 
     if (selectionStage) {
-        const tickers = extractCandidateTickers(firstUserContent);
-        if (assistantTurns === 0 && tickers[0]) {
+        const ticker =
+            extractSelectionOverrides(firstUserContent).ticker ?? extractCandidateTickers(firstUserContent)[0];
+        if (assistantTurns === 0 && ticker) {
             res.status(200).json(
-                toolUseResponse(model, "get_market_rules", { ticker: tickers[0] }, "Checking the settlement rules.")
+                toolUseResponse(model, "get_market_rules", { ticker }, "Checking the settlement rules.")
             );
             return;
         }
