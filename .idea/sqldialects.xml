@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="SqlDialectMappings">
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/count_recent_orders.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_candidate_markets_by_topic.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_open_exposure_by_topic.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_realized_pnl_since.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_topic_market_map.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/seed/trading_topic_map.sql" dialect="PostgreSQL" />
+  </component>
+</project>

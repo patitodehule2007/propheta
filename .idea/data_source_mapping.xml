@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/count_recent_orders.sql" value="3c7f5db9-26b1-4d49-9505-932cfa1adb8e" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_candidate_markets_by_topic.sql" value="3c7f5db9-26b1-4d49-9505-932cfa1adb8e" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_open_exposure_by_topic.sql" value="3c7f5db9-26b1-4d49-9505-932cfa1adb8e" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_realized_pnl_since.sql" value="3c7f5db9-26b1-4d49-9505-932cfa1adb8e" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/functions/trading/get_topic_market_map.sql" value="3c7f5db9-26b1-4d49-9505-932cfa1adb8e" />
+    <file url="file://$PROJECT_DIR$/database/init/sql/seed/trading_topic_map.sql" value="3c7f5db9-26b1-4d49-9505-932cfa1adb8e" />
+  </component>
+</project>
