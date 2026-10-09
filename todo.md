@@ -18,7 +18,7 @@ Without these the pipeline cannot reach gate 3 (selection agent).
 - [x] **Set `KALSHI_API_KEY_ID` and `KALSHI_PRIVATE_KEY` (demo account) in `.env`.**
       Empty today, so the market cache and quote poller no-op and gate 2 always
       returns `no_open_market`.
-  - [ ] Run the signed `GET /portfolio/balance` smoke test against demo (pending in
+  - [x] Run the signed `GET /portfolio/balance` smoke test against demo (pending in
         `docs/entregas/entrega-agosto.md`; command in `docs/backend/kalshi.md`).
 - [x] **Fix `X_WEBHOOK_TARGET_URL` in `.env`.** Currently the literal `null`, so
       registration stores `"null"` and `/mock/simulate-post` delivers nowhere.

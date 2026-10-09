@@ -195,10 +195,11 @@ Manual check against demo, with credentials in `.env`:
 
 ```bash
 pnpm --prefix backend typecheck
-pnpm --prefix backend ts-node -e "
-  import('./src/modules/kalshi').then(async (k) => {
+node --env-file=../.env.defaults --env-file=../.env -r ts-node/register -e '
+const { kalshiService: k } = require("./src/modules/kalshi");
+(async () => {
     console.info(await k.getExchangeStatus());
     console.info(await k.getBalance());
-  });
-"
+})().catch((e) => { console.error(e.message); process.exit(1); });
+'
 ```
