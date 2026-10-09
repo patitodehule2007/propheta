@@ -1,3 +1,5 @@
+import { loginAsAdmin } from "./auth";
+
 const X_API_MOCK_URL = process.env.X_API_BASE_URL ?? "http://x-api-mock-test:4100";
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://backend-test:5000";
 
@@ -13,6 +15,14 @@ export async function registerBackendWebhook(): Promise<{ id: string; valid: boo
     });
     const body = (await response.json()) as { data: { id: string; valid: boolean } };
     return body.data;
+}
+
+let adminCookie: string | null = null;
+
+/** Logs in once and reuses the cookie: `/decisions` sits behind `authMiddleware`. */
+async function getAdminCookie(): Promise<string> {
+    adminCookie ??= await loginAsAdmin();
+    return adminCookie;
 }
 
 /**
@@ -60,7 +70,8 @@ export async function waitForDecision(
 
     while (Date.now() < deadline) {
         const response = await fetch(
-            `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`
+            `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`,
+            { headers: { Cookie: await getAdminCookie() } }
         );
         const body = (await response.json()) as { data: { items: Decision[] } };
         const decision = stage ? body.data.items.find((item) => item.stage === stage) : body.data.items[0];
@@ -78,7 +89,8 @@ export async function waitForDecision(
  */
 export async function listDecisionStages(platformPostId: string): Promise<string[]> {
     const response = await fetch(
-        `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`
+        `${BACKEND_URL}/api/webhooks/x/decisions?platformPostId=${encodeURIComponent(platformPostId)}`,
+        { headers: { Cookie: await getAdminCookie() } }
     );
     const body = (await response.json()) as { data: { items: Decision[] } };
     return body.data.items.map((item) => item.stage).reverse();
@@ -99,7 +111,9 @@ export async function waitForExitDecision(positionId: string, options: { timeout
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
-        const response = await fetch(`${BACKEND_URL}/api/webhooks/x/decisions?limit=${EXIT_SCAN_PAGE_SIZE}`);
+        const response = await fetch(`${BACKEND_URL}/api/webhooks/x/decisions?limit=${EXIT_SCAN_PAGE_SIZE}`, {
+            headers: { Cookie: await getAdminCookie() }
+        });
         const body = (await response.json()) as { data: { items: Decision[] } };
         const decision = body.data.items.find(
             (item) => item.stage === "EXIT" && item.metadata?.positionId === positionId

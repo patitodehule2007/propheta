@@ -33,12 +33,18 @@ by default (`X_API_BASE_URL`).
   verified against the exact bytes received, not a re-serialized copy.
   An invalid or missing signature throws `AuthenticationError` (401).
 
-`GET /api/webhooks/x/decisions` — paginated (`limit`/`offset` +
+The `GET`/`POST` webhook routes are called by X and carry no JWT; their
+authentication is the CRC token and the payload signature respectively.
+`authMiddleware` is applied per route, never to the whole router.
+
+`GET /api/webhooks/x/decisions` — behind `authMiddleware` (401 without a
+session); paginated (`limit`/`offset` +
 `totalCount`) read of the audit log, optionally filtered by
 `platformPostId`. Exists mainly so integration tests and the future
 dashboard can assert on what the pipeline decided.
 
-`POST /api/webhooks/x/registration` — ensures a webhook pointing at
+`POST /api/webhooks/x/registration` — behind `authMiddleware` (401 without a
+session); ensures a webhook pointing at
 `X_WEBHOOK_TARGET_URL` is registered with X (`ensureWebhookRegistered` in
 `modules/ingestion/ingestion.service.ts`, calling the X API via
 `modules/ingestion/xApiClient.service.ts`): lists the account's existing

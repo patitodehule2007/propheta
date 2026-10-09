@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { loginAsAdmin } from "../helpers/auth";
 import { listDecisionStages, registerBackendWebhook, simulatePost, waitForDecision } from "../helpers/xApiMock";
 
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://backend-test:5000";
@@ -81,5 +82,25 @@ describe("X webhook ingestion", () => {
         const decision = await waitForDecision(postId);
         expect(decision.decision).toBe("DISCARDED");
         expect(decision.reason).toBe("invalid_signature");
+    });
+
+    it("should return 401 when reading decisions without a session", async () => {
+        const response = await fetch(`${BACKEND_URL}/api/webhooks/x/decisions`);
+
+        expect(response.status).toBe(401);
+    });
+
+    it("should return 401 when registering the webhook without a session", async () => {
+        const response = await fetch(`${BACKEND_URL}/api/webhooks/x/registration`, { method: "POST" });
+
+        expect(response.status).toBe(401);
+    });
+
+    it("should return 200 when reading decisions with a valid session", async () => {
+        const response = await fetch(`${BACKEND_URL}/api/webhooks/x/decisions`, {
+            headers: { Cookie: await loginAsAdmin() }
+        });
+
+        expect(response.status).toBe(200);
     });
 });
