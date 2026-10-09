@@ -1,0 +1,22 @@
+### Auth — single admin user, httpOnly cookie session.
+# REST Client keeps the cookies from login for every later request, including
+# requests in the other .http files.
+
+### Login (sets access + refresh cookies)
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+    "email": "{{$dotenv ADMIN_EMAIL}}",
+    "password": "{{$dotenv ADMIN_PASSWORD}}"
+}
+
+### Current user (requires session)
+GET {{baseUrl}}/auth/me
+
+### Refresh access token from the refresh cookie
+POST {{baseUrl}}/auth/refresh
+
+### Logout (clears both cookies)
+POST {{baseUrl}}/auth/logout

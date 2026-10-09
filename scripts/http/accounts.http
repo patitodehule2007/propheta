@@ -1,0 +1,20 @@
+### Monitored accounts — all routes require a session (run auth.http login first).
+
+@pageSize = 20
+# Known to x-api-mock but not seeded, so adding it does not conflict.
+@newHandle = PressSec
+
+### List monitored accounts (offset pagination)
+GET {{baseUrl}}/accounts?limit={{pageSize}}&offset=0
+
+### Add a monitored account by handle (resolved through the X API / mock)
+# @name addAccount
+POST {{baseUrl}}/accounts
+Content-Type: application/json
+
+{
+    "handle": "{{newHandle}}"
+}
+
+### Remove the account added above
+DELETE {{baseUrl}}/accounts/{{addAccount.response.body.data.id}}

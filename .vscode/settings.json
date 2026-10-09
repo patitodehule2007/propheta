@@ -32,5 +32,11 @@
         "strings": "off"
     },
     "js/ts.hover.maximumLength": 500,
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "rest-client.environmentVariables": {
+        "$shared": {
+            "baseUrl": "http://localhost:5000/api",
+            "mockUrl": "http://localhost:4100"
+        }
+    }
 }

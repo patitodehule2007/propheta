@@ -1,0 +1,71 @@
+### x-api-mock — published on 127.0.0.1:4100 by docker-compose.yml.
+# Run webhooks.http "Register the webhook" first: simulate-post delivers to the
+# last registered webhook and fails with 400 if there is none.
+
+# Platform user ids from mocks/x-api-mock/src/state.ts (seeded accounts).
+@trumpId = 25073877
+@whiteHouseId = 1349149096909668362
+@vanceId = 210437201
+
+@pageSize = 20
+
+### Mock health
+GET {{mockUrl}}/health
+
+### Resolve a handle to a user (what POST /api/accounts calls)
+GET {{mockUrl}}/2/users/by/username/realDonaldTrump
+
+### Registered webhooks (check `valid` and `url`)
+GET {{mockUrl}}/2/webhooks
+
+### Activity subscriptions
+GET {{mockUrl}}/2/activity/subscriptions
+
+### Simulate a post from realDonaldTrump
+# @name simulateTrump
+POST {{mockUrl}}/mock/simulate-post
+Content-Type: application/json
+
+{
+    "userId": "{{trumpId}}",
+    "text": "We will be imposing a 25% tariff on all steel imports starting next Monday."
+}
+
+### Decisions for the realDonaldTrump post above
+GET {{baseUrl}}/webhooks/x/decisions?platformPostId={{simulateTrump.response.body.data.postId}}&limit={{pageSize}}&offset=0
+
+### Simulate a post from WhiteHouse
+# @name simulateWhiteHouse
+POST {{mockUrl}}/mock/simulate-post
+Content-Type: application/json
+
+{
+    "userId": "{{whiteHouseId}}",
+    "text": "The President will announce his nominee for Chair of the Federal Reserve tomorrow at 10am."
+}
+
+### Decisions for the WhiteHouse post above
+GET {{baseUrl}}/webhooks/x/decisions?platformPostId={{simulateWhiteHouse.response.body.data.postId}}&limit={{pageSize}}&offset=0
+
+### Simulate a post from JDVance
+# @name simulateVance
+POST {{mockUrl}}/mock/simulate-post
+Content-Type: application/json
+
+{
+    "userId": "{{vanceId}}",
+    "text": "Just met with Senate leadership. The government funding bill will pass before the deadline."
+}
+
+### Decisions for the JDVance post above
+GET {{baseUrl}}/webhooks/x/decisions?platformPostId={{simulateVance.response.body.data.postId}}&limit={{pageSize}}&offset=0
+
+### Simulate a post with a bad signature — expect deliveryStatus 401
+POST {{mockUrl}}/mock/simulate-post
+Content-Type: application/json
+
+{
+    "userId": "{{trumpId}}",
+    "text": "This delivery should be rejected by the signature check.",
+    "corruptSignature": true
+}

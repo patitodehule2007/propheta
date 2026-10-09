@@ -23,11 +23,11 @@ Without these the pipeline cannot reach gate 3 (selection agent).
 - [x] **Fix `X_WEBHOOK_TARGET_URL` in `.env`.** Currently the literal `null`, so
       registration stores `"null"` and `/mock/simulate-post` delivers nowhere.
       Set it to `http://backend:5000/api/webhooks/x`.
-- [ ] **Make posts triggerable in dev.** `x-api-mock` is only `expose`d, not
-      published to the host.
-  - [ ] Call `POST /api/webhooks/x/registration` so the mock has a webhook.
-  - [ ] Hit `/mock/simulate-post` via `docker compose exec`, or add a dev-only
-        port mapping for `x-api-mock`.
+- [x] **Make posts triggerable in dev.** `x-api-mock` is now published on
+      `127.0.0.1:4100`; REST Client requests live in `scripts/http/`.
+  - [x] Call `POST /api/webhooks/x/registration` so the mock has a webhook
+        (`scripts/http/webhooks.http`).
+  - [x] Hit `/mock/simulate-post` (`scripts/http/x-api-mock.http`).
 - [x] **Verify the `topic_market_map` tags** in
       `database/init/sql/seed/trading_topic_map.sql` against a live
       `GET /search/tags_by_categories` response (`getTagsByCategories`) on demo.
@@ -68,6 +68,14 @@ Without these, the run will most likely end in `NO_TRADE` at every gate.
 ## Non-blockers (documented v1 gaps)
 
 Not required for a dry run; needed before production or live capital.
+
+- [ ] **Unauthenticated webhook admin routes.** `xWebhookRouter`
+      (`backend/src/routes/xWebhook.routes.ts`) has no `authMiddleware`, so
+      `GET /api/webhooks/x/decisions` exposes the decision log and
+      `POST /api/webhooks/x/registration` can be triggered by anyone. Put both
+      behind `authMiddleware`; the CRC `GET /` and the delivery `POST /` must
+      stay public for X (delivery is protected by the signature check). Update
+      the integration tests and `docs/backend/ingestion.md` accordingly.
 
 - [ ] **Kalshi WebSocket feed (§5.6).** v1 uses REST polling, so price-triggered
       exits fire on `QUOTE_POLL_INTERVAL_MS` cadence, not on a tick. Also covers

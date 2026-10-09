@@ -1,0 +1,22 @@
+### X webhook + decision log.
+
+@pageSize = 20
+
+### Backend health
+GET {{baseUrl}}/health
+
+### Register the webhook with X (the mock in dev). Idempotent.
+# The mock runs a CRC check against X_WEBHOOK_TARGET_URL, so the response's
+# `valid` flag shows whether the backend answered the challenge.
+# Mock state is in memory: re-run this after x-api-mock restarts.
+POST {{baseUrl}}/webhooks/x/registration
+
+### CRC challenge (what X calls to validate the webhook)
+GET {{baseUrl}}/webhooks/x?crc_token=manual-test-token
+
+### Decision log (offset pagination)
+GET {{baseUrl}}/webhooks/x/decisions?limit={{pageSize}}&offset=0
+
+### Decision log for one post — set postId to a platform post id
+@postId = replace-with-post-id
+GET {{baseUrl}}/webhooks/x/decisions?platformPostId={{postId}}&limit={{pageSize}}&offset=0

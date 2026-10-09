@@ -23,6 +23,14 @@ tests/jest/run.sh
 The pre-push git hook runs the suite automatically; the CI test job calls the
 same script so the two cannot drift.
 
+## Manual API testing
+
+For exploratory requests against the dev stack (`docker compose up --build`),
+use the REST Client files in `scripts/http/`, including the
+`/mock/simulate-post` flow that drives a post through the decision pipeline.
+`x-api-mock` is published on `127.0.0.1:4100` for this. Setup and flow:
+[`scripts/http/README.md`](../../scripts/http/README.md).
+
 ## Writing tests
 
 - Place test files under `tests/jest/src/` with the `.test.ts` suffix.

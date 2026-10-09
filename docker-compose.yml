@@ -139,6 +139,10 @@ services:
             - .env
         environment:
             PORT: 4100
+        # Published on loopback only, so the REST Client requests in
+        # scripts/http/ can trigger /mock/simulate-post from the host.
+        ports:
+            - "127.0.0.1:4100:4100"
         expose:
             - "4100"
         healthcheck:
