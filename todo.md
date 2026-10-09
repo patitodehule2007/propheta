@@ -15,7 +15,7 @@ Without these the pipeline cannot reach gate 3 (selection agent).
       warns and no-ops; the pipeline stops after `LINKS_ENRICHED`.
   - [ ] Configure the billing spending limit first (still "Pendiente" in
         `docs/entregas/entrega-agosto.md`).
-- [ ] **Set `KALSHI_API_KEY_ID` and `KALSHI_PRIVATE_KEY` (demo account) in `.env`.**
+- [x] **Set `KALSHI_API_KEY_ID` and `KALSHI_PRIVATE_KEY` (demo account) in `.env`.**
       Empty today, so the market cache and quote poller no-op and gate 2 always
       returns `no_open_market`.
   - [ ] Run the signed `GET /portfolio/balance` smoke test against demo (pending in
