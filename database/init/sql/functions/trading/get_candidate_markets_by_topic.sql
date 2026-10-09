@@ -4,7 +4,7 @@
 CREATE FUNCTION get_candidate_markets_by_topic(
     p_topic text,
     p_max_close_time timestamptz,
-    p_min_series_volume BIGINT,
+    p_min_series_volume NUMERIC,
     p_limit INT
 )
 RETURNS TABLE (
@@ -15,8 +15,8 @@ RETURNS TABLE (
     close_time timestamptz,
     rules_primary text,
     rules_secondary text,
-    volume_24h BIGINT,
-    open_interest BIGINT,
+    volume_24h NUMERIC,
+    open_interest NUMERIC,
     fee_type text,
     fee_multiplier NUMERIC,
     additional_prohibitions jsonb

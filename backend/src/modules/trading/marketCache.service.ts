@@ -50,6 +50,10 @@ export async function refreshMarketCache(): Promise<void> {
 
 async function refreshSeriesForTag(tag: string): Promise<void> {
     const { series } = await kalshiService.getSeriesList({ tags: tag, include_volume: true });
+    if (!series) {
+        logger.debug({ tag }, "No Kalshi series match tag");
+        return;
+    }
 
     for (const oneSeries of series) {
         const { id: kalshiSeriesId } = await upsertKalshiSeries({

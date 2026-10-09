@@ -291,7 +291,8 @@ export interface GetSeriesListParams {
 }
 
 export interface GetSeriesListResponse {
-    series: Series[];
+    /** Kalshi returns `null`, not `[]`, when no series matches the filter. */
+    series: Series[] | null;
 }
 
 export interface GetSeriesResponse {

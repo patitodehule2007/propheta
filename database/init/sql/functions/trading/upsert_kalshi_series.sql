@@ -5,7 +5,7 @@ CREATE FUNCTION upsert_kalshi_series(
     p_title text,
     p_category text,
     p_tags jsonb,
-    p_volume BIGINT,
+    p_volume NUMERIC,
     p_fee_type text,
     p_fee_multiplier NUMERIC,
     p_additional_prohibitions jsonb,

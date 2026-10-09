@@ -10,8 +10,8 @@ CREATE FUNCTION upsert_kalshi_market(
     p_close_time timestamptz,
     p_rules_primary text,
     p_rules_secondary text,
-    p_volume_24h BIGINT,
-    p_open_interest BIGINT,
+    p_volume_24h NUMERIC,
+    p_open_interest NUMERIC,
     p_source_updated_at timestamptz
 )
 RETURNS TABLE (id uuid, ticker text)

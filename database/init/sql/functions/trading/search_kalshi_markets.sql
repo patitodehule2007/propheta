@@ -8,7 +8,7 @@ RETURNS TABLE (
     title text,
     yes_sub_title text,
     close_time timestamptz,
-    volume_24h BIGINT
+    volume_24h NUMERIC
 )
 LANGUAGE sql
 STABLE

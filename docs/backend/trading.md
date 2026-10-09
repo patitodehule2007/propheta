@@ -212,11 +212,18 @@ Both the quote poller and the market cache refresh no-op (single warn) when
 Kalshi credentials are not configured, the same dev-tolerant pattern
 `config.anthropic.apiKey` uses.
 
+A tag that matches no series is skipped (debug-logged): Kalshi returns
+`series: null`, not `[]`, for an empty `GET /series` result. Tags must be
+real Kalshi tags (`getTagsByCategories`), not category names.
+
 ## Schema
 
 `database/init/migrations/20260904000001_create_trading_tables.ts`:
 `topic_market_map`, `kalshi_series`, `kalshi_markets`, `trade_proposals`,
 `orders`, `positions`. Money is integer cents; probabilities are `numeric`;
+Kalshi contract counts (`kalshi_series.volume`, `kalshi_markets.volume_24h` /
+`open_interest`) are `numeric` because fixed-point counts can be fractional
+(`20261009000001_kalshi_fractional_counts.ts`);
 no PG enums — categorical columns are `text`, matching the rest of the
 schema. `positions` carries `peak_favourable_cents`, `opened_at`,
 `closed_at`, `exit_reason` from its first migration specifically so
