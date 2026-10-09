@@ -6,16 +6,19 @@
 -- topics use the closest adjacent tags). NONE has no row -- the pre-gate
 -- already discards it before candidate assembly ever runs.
 
--- Updated as of 2/10/26
+-- Category names (Politics, Economics, Financials) are not tags and match no
+-- series -- only the tags listed under each category are valid filters.
+
+-- Updated as of 9/10/26
 INSERT INTO topic_market_map (topic, kalshi_tags, default_horizon_minutes)
 VALUES
-    ('TARIFFS_TRADE', '["Economics", "Inflation", "Trump"]'::jsonb, 240),
-    ('APPOINTMENTS_PERSONNEL', '["Politics", "Trump", "Congress"]'::jsonb, 720),
-    ('MONETARY_POLICY_FED', '["Economics", "Fed", "Interest Rates"]'::jsonb, 180),
-    ('INTERNATIONAL_CONFLICT', '["World", "International", "Iran"]'::jsonb, 60),
-    ('SHUTDOWN_BUDGET', '["Politics", "Congress", "Economics"]'::jsonb, 360),
-    ('CRYPTO_REGULATION', '["Crypto", "Politics", "Financials"]'::jsonb, 480),
-    ('IMMIGRATION', '["Politics", "Trump", "SCOTUS & courts"]'::jsonb, 720)
+    ('TARIFFS_TRADE', '["Trump", "Inflation", "Jobs & Economy"]'::jsonb, 240),
+    ('APPOINTMENTS_PERSONNEL', '["Trump", "Congress"]'::jsonb, 720),
+    ('MONETARY_POLICY_FED', '["Fed", "Interest Rates"]'::jsonb, 180),
+    ('INTERNATIONAL_CONFLICT', '["International", "Iran"]'::jsonb, 60),
+    ('SHUTDOWN_BUDGET', '["Congress", "Jobs & Economy"]'::jsonb, 360),
+    ('CRYPTO_REGULATION', '["Crypto", "Congress"]'::jsonb, 480),
+    ('IMMIGRATION', '["Trump", "SCOTUS & courts"]'::jsonb, 720)
 ON CONFLICT (topic) DO UPDATE
 SET kalshi_tags = EXCLUDED.kalshi_tags,
     default_horizon_minutes = EXCLUDED.default_horizon_minutes,

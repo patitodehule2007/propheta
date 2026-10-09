@@ -238,7 +238,9 @@ house style in `sql/functions/ingestion/`. `get_positions_due_for_exit` and
 `database/init/sql/seed/trading_topic_map.sql` — the hand-written topic →
 Kalshi tags mapping (open decision 4: human-reviewed, never generated).
 Tags were reconciled against the live `GET /search/tags_by_categories`
-response on 2/10/26 (marker in the file). Re-reconcile when Kalshi's
+response on 9/10/26 (marker in the file). Only the tags nested under each
+category are valid `GET /series?tags=` filters -- category names such as
+`Politics` or `Economics` match nothing. Re-reconcile when Kalshi's
 vocabulary changes. The seed upserts (`ON CONFLICT (topic) DO UPDATE`), so
 `seed` refreshes existing rows; `seed-if-empty` still skips a populated DB.
 
