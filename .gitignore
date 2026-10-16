@@ -19,3 +19,5 @@ coverage/
 # Logs
 logs/
 *.log
+# Manual LLM relay scratch reply (temporary, see mocks/anthropic-manual-relay)
+scripts/http/manual-llm-reply.txt

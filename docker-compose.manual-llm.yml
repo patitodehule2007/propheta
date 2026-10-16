@@ -1,0 +1,38 @@
+# TEMPORARY test harness: routes the backend's Anthropic calls to a human who
+# answers them in a regular Claude chat, so the decision pipeline can be tried
+# without an API key. Usage: mocks/anthropic-manual-relay/README.md.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.manual-llm.yml up --build
+#
+# To remove the harness, delete this file and mocks/anthropic-manual-relay/.
+services:
+    anthropic-manual-relay:
+        build: ./mocks/anthropic-manual-relay
+        container_name: propheta-anthropic-manual-relay
+        restart: always
+        networks:
+            - internal
+        environment:
+            PORT: 4300
+        # Loopback only: scripts/http/manual-llm.http drives it from the host.
+        ports:
+            - "127.0.0.1:4300:4300"
+        expose:
+            - "4300"
+        healthcheck:
+            test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4300/health"]
+            interval: 10s
+            timeout: 5s
+            retries: 12
+            start_period: 10s
+
+    backend:
+        depends_on:
+            anthropic-manual-relay:
+                condition: service_healthy
+        environment:
+            ANTHROPIC_BASE_URL: http://anthropic-manual-relay:4300
+            # Placeholder, not a credential: only satisfies the "key configured"
+            # guard in agent.service.ts. It overrides any real key in .env, so
+            # nothing real is ever sent to the relay.
+            ANTHROPIC_API_KEY: manual-relay

@@ -271,6 +271,13 @@ established pattern is a real containerized mock reached via a base-URL env
 override, the same way `X_API_BASE_URL` repoints the X API client at
 `mocks/x-api-mock`. `mocks/anthropic-mock/` follows it for `/v1/messages`.
 
+**Manual relay (temporary).** `mocks/anthropic-manual-relay/` uses the same
+base-URL override for hand testing without an API key. It holds each
+`/v1/messages` call and shows it as one prompt, which a human answers in a
+regular Claude chat and posts back (`scripts/http/manual-llm.http`). Enable it
+with `docker-compose.manual-llm.yml`. Steps, limits and removal are in its
+README.
+
 It is **stateless by design**: every request carries the full conversation
 so far, and the script is derived entirely from that request body (how many
 assistant turns already happened, whether the original post text contains a

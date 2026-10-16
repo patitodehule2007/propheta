@@ -1,0 +1,16 @@
+### Manual LLM relay (TEMPORARY) — answer the backend's Claude calls by hand.
+# Needs the stack started with docker-compose.manual-llm.yml.
+# Step-by-step: mocks/anthropic-manual-relay/README.md
+
+@relayUrl = http://localhost:4300
+
+### 1. Next prompt waiting for an answer. 204 = nothing pending.
+# Copy the response body into a NEW Claude chat.
+# @name pending
+GET {{relayUrl}}/pending
+
+### 2. Send Claude's answer. Paste it into manual-llm-reply.txt (next to this file) first.
+POST {{relayUrl}}/reply/{{pending.response.headers.X-Request-Id}}
+Content-Type: text/plain
+
+< ./manual-llm-reply.txt
