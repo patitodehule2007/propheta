@@ -4,7 +4,9 @@ import express, { Request, Response } from "express";
 import { config } from "./config";
 import {
     MARKETS,
+    MockMarket,
     MockOrder,
+    MockSeries,
     MockOrderbook,
     ORDERBOOKS,
     ORDERS_BY_CLIENT_ID,
@@ -31,6 +33,15 @@ app.get("/exchange/schedule", (_req: Request, res: Response) => {
 
 // --- Series -------------------------------------------------------------
 
+type PresentedSeries = Omit<MockSeries, "volume_fp"> & Partial<Pick<MockSeries, "volume_fp">>;
+
+/** Real Kalshi omits `volume_fp` unless the request passes `include_volume=true`. */
+function presentSeries(series: MockSeries, req: Request): PresentedSeries {
+    if (req.query.include_volume === "true") return series;
+    const { volume_fp: _omitted, ...withoutVolume } = series;
+    return withoutVolume;
+}
+
 app.get("/series", (req: Request, res: Response) => {
     const tags = typeof req.query.tags === "string" ? req.query.tags.split(",") : null;
     const category = typeof req.query.category === "string" ? req.query.category : null;
@@ -41,7 +52,7 @@ app.get("/series", (req: Request, res: Response) => {
         return true;
     });
 
-    res.status(200).json({ series: matches });
+    res.status(200).json({ series: matches.map((series) => presentSeries(series, req)) });
 });
 
 app.get("/series/fee_changes", (_req: Request, res: Response) => {
@@ -54,7 +65,7 @@ app.get("/series/:ticker", (req: Request, res: Response) => {
         res.status(404).json({ error: "series not found" });
         return;
     }
-    res.status(200).json({ series });
+    res.status(200).json({ series: presentSeries(series, req) });
 });
 
 app.get("/search/tags_by_categories", (_req: Request, res: Response) => {
@@ -68,7 +79,12 @@ app.get("/search/tags_by_categories", (_req: Request, res: Response) => {
 // --- Markets --------------------------------------------------------------
 
 app.get("/markets/orderbooks", (req: Request, res: Response) => {
-    const tickers = typeof req.query.tickers === "string" ? req.query.tickers.split(",") : [];
+    // Repeated `tickers=` params, as the real API expects. Express parses one
+    // occurrence as a string and several as an array.
+    const rawTickers = req.query.tickers;
+    const tickers = (Array.isArray(rawTickers) ? rawTickers : [rawTickers]).filter(
+        (ticker): ticker is string => typeof ticker === "string"
+    );
     const orderbooks = tickers
         .filter((ticker) => ORDERBOOKS[ticker])
         .map((ticker) => ({ ticker, orderbook_fp: ORDERBOOKS[ticker] }));
@@ -97,9 +113,21 @@ app.get("/markets/:ticker", (req: Request, res: Response) => {
     res.status(200).json({ market });
 });
 
+/**
+ * The real API filters with one vocabulary (`status=open`) and returns
+ * another (`"status": "active"`); the mock reproduces that split so the
+ * backend cannot pass tests by comparing against the filter value.
+ */
+const MARKET_STATUS_FILTERS: Record<string, MockMarket["status"]> = {
+    open: "active",
+    closed: "closed",
+    settled: "finalized"
+};
+
 app.get("/markets", (req: Request, res: Response) => {
     const seriesTicker = typeof req.query.series_ticker === "string" ? req.query.series_ticker : null;
-    const status = typeof req.query.status === "string" ? req.query.status : null;
+    const statusFilter = typeof req.query.status === "string" ? req.query.status : null;
+    const status = statusFilter ? MARKET_STATUS_FILTERS[statusFilter] : null;
 
     const matches = MARKETS.filter((market) => {
         if (seriesTicker && market.series_ticker !== seriesTicker) return false;

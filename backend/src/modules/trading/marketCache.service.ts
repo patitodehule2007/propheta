@@ -1,24 +1,21 @@
 import { config } from "../../config";
 import {
-    getTopicMarketMap,
+    getTopicSeriesTickers,
     upsertKalshiMarket,
     upsertKalshiSeries
 } from "../../repositories/postgres/trading.repository";
 import { logger } from "../../shared/services/logger";
-import { kalshiService } from "../kalshi";
+import { KALSHI_MARKET_STATUS, kalshiService } from "../kalshi";
 
-const MARKET_STATUS_OPEN = "open";
 const MAX_MARKETS_PER_CALL = 1000;
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Refreshes the `kalshi_series` / `kalshi_markets` cache for every series the
- * `topic_market_map`'s tags resolve to
- * (`docs/projectDefenition/initial_investigation.md` §5.3: topic -> tags ->
- * series -> markets). Candidate assembly (gate 2) reads only this cache,
- * never Kalshi directly, so a stale cache is a stale candidate set, not a
- * missing one.
+ * Refreshes the `kalshi_series` / `kalshi_markets` cache for every series on
+ * the hand-picked topic whitelist (`topic_market_series`: topic -> series ->
+ * markets). Candidate assembly (gate 2) reads only this cache, never Kalshi
+ * directly, so a stale cache is a stale candidate set, not a missing one.
  *
  * Full refresh per cycle for v1. The incremental `min_updated_ts` path is a
  * documented follow-up: §5.3 says it is incompatible with most other filters,
@@ -28,7 +25,7 @@ let refreshTimer: ReturnType<typeof setInterval> | null = null;
  * No-ops (with a single warn) when Kalshi credentials are not configured --
  * empty in development, same pattern as `config.anthropic.apiKey` in
  * `modules/agent/agent.service.ts` -- rather than attempting and logging a
- * failure per tag.
+ * failure per series.
  */
 export async function refreshMarketCache(): Promise<void> {
     if (!config.kalshi.apiKeyId || !config.kalshi.privateKey) {
@@ -36,46 +33,41 @@ export async function refreshMarketCache(): Promise<void> {
         return;
     }
 
-    const topicMap = await getTopicMarketMap();
-    const tags = Array.from(new Set(topicMap.flatMap((entry) => entry.kalshiTags)));
+    const seriesTickers = await getTopicSeriesTickers();
 
-    for (const tag of tags) {
+    for (const seriesTicker of seriesTickers) {
         try {
-            await refreshSeriesForTag(tag);
+            await refreshSeries(seriesTicker);
         } catch (err) {
-            logger.error({ err, tag }, "Failed to refresh market cache for tag");
+            // A delisted or renamed series 404s; the rest of the whitelist
+            // still refreshes.
+            logger.error({ err, seriesTicker }, "Failed to refresh market cache for series");
         }
     }
 }
 
-async function refreshSeriesForTag(tag: string): Promise<void> {
-    const { series } = await kalshiService.getSeriesList({ tags: tag, include_volume: true });
-    if (!series) {
-        logger.debug({ tag }, "No Kalshi series match tag");
-        return;
-    }
+async function refreshSeries(seriesTicker: string): Promise<void> {
+    const { series } = await kalshiService.getSeries(seriesTicker, { include_volume: true });
 
-    for (const oneSeries of series) {
-        const { id: kalshiSeriesId } = await upsertKalshiSeries({
-            seriesTicker: oneSeries.ticker,
-            title: oneSeries.title,
-            category: oneSeries.category,
-            tags: oneSeries.tags,
-            volume: oneSeries.volume ?? 0,
-            feeType: oneSeries.fee_type,
-            feeMultiplier: oneSeries.fee_multiplier,
-            additionalProhibitions: oneSeries.additional_prohibitions ?? [],
-            sourceUpdatedAt: oneSeries.last_updated_ts ?? null
-        });
+    const { id: kalshiSeriesId } = await upsertKalshiSeries({
+        seriesTicker: series.ticker,
+        title: series.title,
+        category: series.category,
+        tags: series.tags,
+        volume: Number(series.volume_fp ?? 0),
+        feeType: series.fee_type,
+        feeMultiplier: series.fee_multiplier,
+        additionalProhibitions: series.additional_prohibitions ?? [],
+        sourceUpdatedAt: series.last_updated_ts ?? null
+    });
 
-        await refreshMarketsForSeries(oneSeries.ticker, kalshiSeriesId);
-    }
+    await refreshMarketsForSeries(series.ticker, kalshiSeriesId);
 }
 
 async function refreshMarketsForSeries(seriesTicker: string, kalshiSeriesId: string): Promise<void> {
     const { markets } = await kalshiService.getMarkets({
         series_ticker: seriesTicker,
-        status: MARKET_STATUS_OPEN,
+        status: KALSHI_MARKET_STATUS.FILTER_OPEN,
         limit: MAX_MARKETS_PER_CALL
     });
 

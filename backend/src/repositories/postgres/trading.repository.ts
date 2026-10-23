@@ -2,23 +2,35 @@ import { query } from "../../shared/services/db";
 
 export interface TopicMarketMapEntry {
     topic: string;
-    kalshiTags: string[];
     defaultHorizonMinutes: number;
+    /** How far out a candidate market may close; null falls back to the global horizon. */
+    maxCloseHorizonMinutes: number | null;
 }
 
 /**
- * Reads the hand-written, human-reviewed topic -> Kalshi tags mapping.
+ * Reads the hand-written, human-reviewed topic table.
  * `docs/backend/tradeDecision.md` open decision 4.
  */
 export async function getTopicMarketMap(): Promise<TopicMarketMapEntry[]> {
-    const rows = await query<{ topic: string; kalshi_tags: string[]; default_horizon_minutes: number }>(
-        "SELECT * FROM get_topic_market_map()"
-    );
+    const rows = await query<{
+        topic: string;
+        default_horizon_minutes: number;
+        max_close_horizon_minutes: number | null;
+    }>("SELECT * FROM get_topic_market_map()");
     return rows.map((row) => ({
         topic: row.topic,
-        kalshiTags: row.kalshi_tags,
-        defaultHorizonMinutes: row.default_horizon_minutes
+        defaultHorizonMinutes: row.default_horizon_minutes,
+        maxCloseHorizonMinutes: row.max_close_horizon_minutes
     }));
+}
+
+/**
+ * Reads every whitelisted series ticker across active topics, deduplicated.
+ * The market cache refresh's work list.
+ */
+export async function getTopicSeriesTickers(): Promise<string[]> {
+    const rows = await query<{ series_ticker: string }>("SELECT series_ticker FROM get_topic_series_tickers()");
+    return rows.map((row) => row.series_ticker);
 }
 
 /**
@@ -114,6 +126,8 @@ export interface CandidateMarket {
  */
 export async function getCandidateMarketsByTopic(params: {
     topic: string;
+    status: string;
+    minCloseTime: string;
     maxCloseTime: string;
     minSeriesVolume: number;
     limit: number;
@@ -131,8 +145,10 @@ export async function getCandidateMarketsByTopic(params: {
         fee_type: string;
         fee_multiplier: string;
         additional_prohibitions: string[];
-    }>("SELECT * FROM get_candidate_markets_by_topic($1, $2, $3, $4)", [
+    }>("SELECT * FROM get_candidate_markets_by_topic($1, $2, $3, $4, $5, $6)", [
         params.topic,
+        params.status,
+        params.minCloseTime,
         params.maxCloseTime,
         params.minSeriesVolume,
         params.limit
@@ -701,6 +717,8 @@ export interface KalshiMarketSearchResult {
  * Backs the find_markets tool escape hatch.
  */
 export async function searchKalshiMarkets(params: {
+    status: string;
+    minCloseTime: string;
     tags: string[] | null;
     seriesTicker: string | null;
     queryText: string | null;
@@ -713,7 +731,9 @@ export async function searchKalshiMarkets(params: {
         yes_sub_title: string;
         close_time: string;
         volume_24h: string;
-    }>("SELECT * FROM search_kalshi_markets($1, $2, $3, $4)", [
+    }>("SELECT * FROM search_kalshi_markets($1, $2, $3, $4, $5, $6)", [
+        params.status,
+        params.minCloseTime,
         params.tags ? JSON.stringify(params.tags) : null,
         params.seriesTicker,
         params.queryText,
@@ -733,8 +753,16 @@ export async function searchKalshiMarkets(params: {
  * Every currently cached open market ticker, ranked by liquidity. The quote
  * poller's watch list.
  */
-export async function getOpenMarketTickers(limit: number): Promise<string[]> {
-    const rows = await query<{ ticker: string }>("SELECT * FROM get_open_market_tickers($1)", [limit]);
+export async function getOpenMarketTickers(params: {
+    status: string;
+    minCloseTime: string;
+    limit: number;
+}): Promise<string[]> {
+    const rows = await query<{ ticker: string }>("SELECT * FROM get_open_market_tickers($1, $2, $3)", [
+        params.status,
+        params.minCloseTime,
+        params.limit
+    ]);
     return rows.map((row) => row.ticker);
 }
 

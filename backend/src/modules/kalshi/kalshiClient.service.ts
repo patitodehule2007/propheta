@@ -31,6 +31,7 @@ import {
     GetSeriesFeeChangesResponse,
     GetSeriesListParams,
     GetSeriesListResponse,
+    GetSeriesParams,
     GetSeriesResponse,
     GetTagsByCategoriesResponse,
     GetTradesParams,
@@ -147,8 +148,8 @@ export const kalshiService = {
     // --- Series -----------------------------------------------------------------
 
     /**
-     * Lists series, optionally filtered by category or tags. The bridge from a
-     * topic's Kalshi tags to its tradable series.
+     * Lists series, optionally filtered by category or tags. Discovery only --
+     * used to review the topic -> series whitelist, not by the market cache.
      *
      * @param params - category/tag filters; note `tags` is comma-separated, not space-separated
      * @returns the matching series
@@ -160,19 +161,21 @@ export const kalshiService = {
 
     /**
      * Reads a single series by ticker, including its fee_type and fee_multiplier.
+     * The market cache's path from a whitelisted series ticker to its row.
      *
      * @param seriesTicker - series ticker
+     * @param params - pass `include_volume` to get `volume_fp`
      * @returns the series
      * @throws {ExternalServiceError} when the request fails or the series is unknown
      */
-    getSeries: (seriesTicker: string): Promise<GetSeriesResponse> => {
-        return get<GetSeriesResponse>(KALSHI_PATHS.seriesByTicker(seriesTicker));
+    getSeries: (seriesTicker: string, params?: GetSeriesParams): Promise<GetSeriesResponse> => {
+        return get<GetSeriesResponse>(KALSHI_PATHS.seriesByTicker(seriesTicker), params);
     },
 
     /**
      * Reads the real Kalshi tag vocabulary, grouped by series category. Used to
-     * build and periodically review `topic_market_map`, never on the trading
-     * critical path.
+     * build and periodically review the topic -> series whitelist, never on
+     * the trading critical path.
      *
      * @returns categories mapped to their tags
      * @throws {ExternalServiceError} when the request fails

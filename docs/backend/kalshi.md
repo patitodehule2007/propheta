@@ -108,12 +108,16 @@ Writes use the V2 order paths (`/portfolio/events/orders`). The legacy
 2026-05-06.
 
 `getMarketOrderbooks` is the batch order-book read (up to 100 tickers per
-call) the quote poller uses instead of one request per market. `getSeriesList`
-/ `getSeries` carry the `fee_type` / `fee_multiplier` a series' own market
-cache row needs — never assume the default 7% quadratic fee. `getTagsByCategories`
-is not text search — it is filter discovery over the real Kalshi tag
-vocabulary, used to build and periodically review `topic_market_map`
-(`docs/backend/trading.md`), never called on the trading critical path.
+call) the quote poller uses instead of one request per market. Its `tickers`
+is a `string[]` sent as repeated params (`tickers=A&tickers=B`, the axios
+client's `paramsSerializer`); a comma-joined value is one invalid ticker.
+`getSeries` (the market cache's path, with `include_volume: true` — otherwise
+Kalshi omits `volume_fp`) and `getSeriesList` carry the `fee_type` /
+`fee_multiplier` a series' own market cache row needs — never assume the
+default 7% quadratic fee. `getSeriesList` and `getTagsByCategories` (not text
+search — filter discovery over the real Kalshi tag vocabulary) are used to
+review the topic → series whitelist (`docs/backend/trading.md`), never on the
+trading critical path.
 
 **Still not covered**: the WebSocket feed (§5.6 — order book deltas, fills,
 market lifecycle), `/markets/orderbooks` batch depth options beyond the
@@ -157,25 +161,33 @@ status and payload deliberately stay out of it.
 
 `mocks/kalshi-mock/` (Express, following the shape of `mocks/x-api-mock`)
 implements the subset of the surface `docs/backend/trading.md` actually calls:
-`/series`, `/search/tags_by_categories`, `/markets`, `/markets/{ticker}`,
+`/series`, `/series/{ticker}`, `/search/tags_by_categories`, `/markets`, `/markets/{ticker}`,
 `/markets/{ticker}/orderbook`, `/markets/orderbooks`, and
 `POST /portfolio/events/orders` (assumes an immediate full fill — there is no
 matching engine — and returns **409 on a repeated `client_order_id`** so the
 idempotent-success path is exercised).
 
-Fixtures (`mocks/kalshi-mock/src/state.ts`), with tags picked against
-`database/init/sql/seed/trading_topic_map.sql` so each series is reachable
-from a known set of topics only:
+Fixtures (`mocks/kalshi-mock/src/state.ts`). Which topics reach each series
+is set by `tests/jest/fixtures/trading_topic_series.sql`, which the test
+stack mounts over the real whitelist seed, so the test cache only ever
+refreshes the mock's series:
 
-| Series | Tags | Reached from | Markets |
-| --- | --- | --- | --- |
-| `KXTARIFF` | `Inflation` | `TARIFFS_TRADE` | `KXTARIFF-25-A` (happy path) |
-| `KXTEST` | `Fed`, `Iran`, `Crypto` | `MONETARY_POLICY_FED`, `INTERNATIONAL_CONFLICT`, `CRYPTO_REGULATION` | one per gate/exit scenario: `-BASE`, `-SL`, `-TP`, `-TL`, `-MC`, `-WIDE` (12c spread), `-THIN` (0.5 contracts at the top), `-NOASK` (no NO bids), `-CLOSING` (closes 20 min after mock start), `-SLIP` |
-| `KXLOWVOL` | `Congress` | `APPOINTMENTS_PERSONNEL`, `SHUTDOWN_BUDGET` | `KXLOWVOL-26-A`, series volume 10 (below the test stack's `TRADE_MIN_SERIES_VOLUME`) |
+| Series | Reached from | Markets |
+| --- | --- | --- |
+| `KXTARIFF` | `TARIFFS_TRADE` | `KXTARIFF-25-A` (happy path) |
+| `KXTEST` | `MONETARY_POLICY_FED`, `APPOINTMENTS_PERSONNEL`, `INTERNATIONAL_CONFLICT`, `CRYPTO_REGULATION` | one per gate/exit scenario: `-BASE`, `-SL`, `-TP`, `-TL`, `-MC`, `-WIDE` (12c spread), `-THIN` (0.5 contracts at the top), `-NOASK` (no NO bids), `-CLOSING` (closes 20 min after mock start), `-SLIP` |
+| `KXLOWVOL` | `SHUTDOWN_BUDGET` | `KXLOWVOL-26-A`, series volume 10 (below the test stack's `TRADE_MIN_SERIES_VOLUME`) |
 
-`IMMIGRATION` deliberately resolves to no series (`no_open_market`). When
-the seed's tags change, re-check this table: a tag shared with another topic
-makes a fixture series a candidate there too.
+Like the real API, the mock filters markets with `status=open` but returns
+them with `"status": "active"`, reports series volume as `volume_fp`
+(a fixed-point string) and only when asked with `include_volume=true`, and
+accepts `/markets/orderbooks` tickers as repeated params, so a backend that
+compares against the filter value, reads a numeric `volume`, forgets
+`include_volume` or comma-joins tickers fails the tests instead of production.
+
+`IMMIGRATION` deliberately resolves to no series (`no_open_market`). When a
+test needs a new topic → series pairing, add it to the fixture whitelist and
+this table together.
 
 Test-only control endpoints (not part of the real API), used by the
 exit-supervision tests:

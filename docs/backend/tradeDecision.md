@@ -95,8 +95,11 @@ API call, which is also what makes the latency budget survivable (see below).
 Topic → hand-written tag map → cached series → open markets, exactly the
 mapping architecture in §5.3 (`tema → tags → series → tickers` from a table in
 memory, never a semantic search over the whole catalogue on the critical path).
+As built, the tag hop was replaced by a hand-picked series whitelist
+(`topic_market_series`) on 23/10/26 — tags proved too coarse; see
+`docs/backend/trading.md` §2.
 
-Filters: close time inside the trading horizon, series volume above a floor,
+Filters: close time inside the trading horizon (per topic as built), series volume above a floor,
 market status open, series `additional_prohibitions` respected.
 
 For each survivor it pre-computes the numbers **the model must never derive
@@ -616,9 +619,11 @@ None of this can be written before the following exist.
 Persistent state only, per the project rule; no functions or triggers in
 migrations.
 
-- `topic_market_map` — the hand-written topic → Kalshi tags table. §5.3 calls
-  this the highest-leverage piece of the system. Also carries
-  `default_horizon_minutes` for estimator B.
+- `topic_market_map` — the hand-written topic table. §5.3 calls the topic →
+  market mapping the highest-leverage piece of the system. Carries
+  `default_horizon_minutes` for estimator B (and, as built,
+  `max_close_horizon_minutes` for gate 2). The mapping itself lives in
+  `topic_market_series`, a hand-picked series whitelist, since 23/10/26.
 - `kalshi_series`, `kalshi_markets` — the market cache, refreshed incrementally
   by `min_updated_ts`, carrying `fee_type` and `fee_multiplier`.
 - `trade_proposals`, `orders`, `positions` — `client_order_id` unique.

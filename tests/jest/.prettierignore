@@ -1,0 +1,2 @@
+# Seed SQL formatted by database/init's prettier (prettier-plugin-sql-cst), which this package does not install.
+fixtures/*.sql

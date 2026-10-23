@@ -20,8 +20,8 @@ The boundary the whole module is built on: **the model chooses which market
 | `trading.types.ts` | — | `TradeDecisionInput`, `CandidateQuote` — cross-gate shapes |
 | `pricing.ts` | — | derives YES/NO ask from a bids-only book; per-contract fee arithmetic |
 | `quote.service.ts` | — | `getLiveOrCachedQuote` — Redis quote cache with a live-fetch fallback |
-| `marketCache.service.ts` | — | refreshes `kalshi_series` / `kalshi_markets` from `topic_market_map`'s tags |
-| `quotePoller.service.ts` | — | REST-polls order books for every cached open ticker into the Redis quote cache |
+| `marketCache.service.ts` | — | refreshes `kalshi_series` / `kalshi_markets` for every whitelisted series (`topic_market_series`) |
+| `quotePoller.service.ts` | — | REST-polls order books for every cached open ticker in a whitelisted series into the Redis quote cache |
 | `preGate.service.ts` | 1 | topic/direction/confidence/novelty/kill-switch/order-rate, zero tokens |
 | `candidates.service.ts` | 2 | topic → cached open markets, enriched with derived quotes |
 | `selectionAgent.service.ts` | 3 | the only LLM call — two-phase, tighter budget than the classifier |
@@ -75,13 +75,28 @@ it (open decision 3 in `tradeDecision.md`).
 
 ### 2. Candidate assembly — `candidates.service.ts`
 
-Topic → `topic_market_map`'s hand-written tags → cached open markets
-(`get_candidate_markets_by_topic`), never a live Kalshi call. Two distinct
+Topic → hand-picked series whitelist (`topic_market_series`) → cached open
+markets (`get_candidate_markets_by_topic`), never a live Kalshi call. Two distinct
 `NO_TRADE` reasons distinguish "nothing exists" from "something exists but
 is too illiquid": the function is called once with no volume floor
 (`no_open_market` if that comes back empty) and once with
 `TRADE_MIN_SERIES_VOLUME` applied (`no_liquid_market` if that one is empty
 instead).
+
+"Open" means a stored status of `active` and a `close_time` still in the
+future. Kalshi filters with `status=open` but returns `"status": "active"`
+on the market itself (`KALSHI_MARKET_STATUS` in `modules/kalshi`), and the
+cache only re-reads markets Kalshi still lists as open, so a market that
+closed after its last refresh keeps its `active` row. The backend therefore
+passes both the status and the current time to `get_candidate_markets_by_topic`,
+`get_open_market_tickers` (quote poller) and `search_kalshi_markets`
+(`find_markets`). Series volume is read from Kalshi's `volume_fp`.
+
+Markets must also close within the topic's window: `topic_market_map`'s
+`max_close_horizon_minutes` when set, else `TRADE_HORIZON_MINUTES`. Tariff,
+appointment and other political markets settle months out and would never
+fit a 3-day window; exits are timed by the exit policy regardless of how far
+out the market closes.
 
 Every surviving candidate is enriched with the numbers the model must never
 derive itself: `yesAsk` / `noAsk` (Kalshi publishes bids only — see
@@ -199,7 +214,12 @@ next sweep rather than closing the position record.
 `docs/backend/tradeDecision.md` recommends a WebSocket feed (§5.6) for
 production; this implementation uses REST polling
 (`quotePoller.service.ts` → `kalshiService.getMarketOrderbooks`, batched up
-to 100 tickers per call) for v1. Consequence: price-triggered exits fire on
+to 100 tickers per call) for v1. Tickers go out as repeated query params
+(`tickers=A&tickers=B`, set once on the axios client via `paramsSerializer`);
+Kalshi reads a comma-joined value as a single ticker and rejects it.
+The watch list (`get_open_market_tickers`) covers only whitelisted series,
+capped at 500 tickers by 24h volume; a market outside it falls back to a live
+order-book read (`getLiveOrCachedQuote`). Consequence: price-triggered exits fire on
 `QUOTE_POLL_INTERVAL_MS` cadence, not on a tick. The WebSocket path is a
 documented follow-up, not an oversight.
 
@@ -212,9 +232,12 @@ Both the quote poller and the market cache refresh no-op (single warn) when
 Kalshi credentials are not configured, the same dev-tolerant pattern
 `config.anthropic.apiKey` uses.
 
-A tag that matches no series is skipped (debug-logged): Kalshi returns
-`series: null`, not `[]`, for an empty `GET /series` result. Tags must be
-real Kalshi tags (`getTagsByCategories`), not category names.
+The market cache refresh walks the whitelist one series at a time
+(`GET /series/{ticker}?include_volume=true`, then that series' open markets
+— about 80 series, under a minute). A series that fails (delisted, renamed,
+rate-limited) is error-logged and skipped; the rest still refresh. Without
+`include_volume` Kalshi omits `volume_fp`, which would read as zero volume
+and fail every series the liquidity floor.
 
 ## Schema
 
@@ -224,6 +247,10 @@ real Kalshi tags (`getTagsByCategories`), not category names.
 Kalshi contract counts (`kalshi_series.volume`, `kalshi_markets.volume_24h` /
 `open_interest`) are `numeric` because fixed-point counts can be fractional
 (`20261009000001_kalshi_fractional_counts.ts`);
+`20261023000001_topic_market_series_whitelist.ts` replaced
+`topic_market_map.kalshi_tags` with the `topic_market_series` join table (one
+row per topic × series ticker; no foreign key to `kalshi_series`, which the
+whitelist is seeded before) and added `max_close_horizon_minutes`;
 no PG enums — categorical columns are `text`, matching the rest of the
 schema. `positions` carries `peak_favourable_cents`, `opened_at`,
 `closed_at`, `exit_reason` from its first migration specifically so
@@ -235,14 +262,25 @@ house style in `sql/functions/ingestion/`. `get_positions_due_for_exit` and
 `get_open_positions` return rows only; precedence and P&L arithmetic live in
 `exitSupervisor.service.ts`, per the no-business-logic-in-the-database rule.
 
-`database/init/sql/seed/trading_topic_map.sql` — the hand-written topic →
-Kalshi tags mapping (open decision 4: human-reviewed, never generated).
-Tags were reconciled against the live `GET /search/tags_by_categories`
-response on 9/10/26 (marker in the file). Only the tags nested under each
-category are valid `GET /series?tags=` filters -- category names such as
-`Politics` or `Economics` match nothing. Re-reconcile when Kalshi's
-vocabulary changes. The seed upserts (`ON CONFLICT (topic) DO UPDATE`), so
-`seed` refreshes existing rows; `seed-if-empty` still skips a populated DB.
+`database/init/sql/seed/trading_topic_map.sql` — the hand-written topic
+table (open decision 4: human-reviewed, never generated): estimator B's
+`default_horizon_minutes` and gate 2's `max_close_horizon_minutes` (180 days
+for political topics, `NULL` — the global window — for
+`MONETARY_POLICY_FED`). Upserts (`ON CONFLICT (topic) DO UPDATE`), so `seed`
+refreshes existing rows; `seed-if-empty` still skips a populated DB.
+
+`database/init/sql/seed/trading_topic_series.sql` — the hand-picked topic →
+series whitelist that decides which markets a topic can trade. Kalshi tags
+were used until 23/10/26 and proved too coarse: one tag spans hundreds of
+series, so ranking by volume let off-topic markets (TSA counts, mention
+markets) fill the candidate cap ahead of every relevant one. Series were
+picked by keyword from series titles (`getSeriesList` per tag,
+`getTagsByCategories` for the vocabulary) and reviewed by hand; a series
+may serve several topics. Recurring series with no open market right now
+stay listed — the refresh picks them up when Kalshi reopens them. The file
+deletes and reinserts the whole list, so removing a line removes the
+series. Series dropped from the list stay in the cache but are no longer
+refreshed, polled or offered as candidates.
 
 ## Configuration
 

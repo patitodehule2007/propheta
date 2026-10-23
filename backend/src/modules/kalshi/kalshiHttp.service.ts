@@ -29,7 +29,10 @@ function toSignedPath(path: string): string {
 export const kalshiHttpClient = axios.create({
     baseURL: baseUrl,
     timeout: config.kalshi.timeoutMs,
-    headers: { "Content-Type": "application/json" }
+    headers: { "Content-Type": "application/json" },
+    // Arrays go out as `key=a&key=b`, the form Kalshi's list filters accept,
+    // not axios' default `key[]=a&key[]=b`.
+    paramsSerializer: { indexes: null }
 });
 
 kalshiHttpClient.interceptors.request.use((requestConfig: InternalAxiosRequestConfig) => {

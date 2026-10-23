@@ -1,8 +1,13 @@
 import { config } from "../../config";
 import { insertDecisionLog } from "../../repositories/postgres/ingestion.repository";
-import { CandidateMarket, getCandidateMarketsByTopic } from "../../repositories/postgres/trading.repository";
+import {
+    CandidateMarket,
+    getCandidateMarketsByTopic,
+    getTopicMarketMap
+} from "../../repositories/postgres/trading.repository";
 import { getQuoteAt } from "../../repositories/redis/marketQuote.repository";
 import { CandidateAssemblyReason, DecisionOutcome, DecisionStage } from "../../shared/core/decisionLog.constants";
+import { KALSHI_MARKET_STATUS } from "../kalshi";
 import { computeFeePerContractCents } from "./pricing";
 import { getLiveOrCachedQuote } from "./quote.service";
 import { CandidateQuote, TradeDecisionInput } from "./trading.types";
@@ -47,16 +52,31 @@ async function enrichCandidate(candidate: CandidateMarket, signalAtMs: number): 
 }
 
 /**
- * Gate 2: deterministic, cache read. Topic -> tags -> cached series -> open
- * markets, ranked by liquidity and capped at `config.trading.maxCandidates`.
+ * How far out a candidate market may close for this topic: the topic's own
+ * `max_close_horizon_minutes` when set, else the global trading horizon.
+ */
+async function resolveMaxCloseHorizonMinutes(topic: string): Promise<number> {
+    const topicMap = await getTopicMarketMap();
+    const entry = topicMap.find((candidate) => candidate.topic === topic);
+    return entry?.maxCloseHorizonMinutes ?? config.trading.tradingHorizonMinutes;
+}
+
+/**
+ * Gate 2: deterministic, cache read. Topic -> whitelisted series -> cached
+ * open markets, ranked by liquidity and capped at `config.trading.maxCandidates`.
  * `docs/backend/tradeDecision.md` §"2. Candidate assembly".
  */
 export async function assembleCandidates(input: TradeDecisionInput): Promise<CandidateAssemblyResult> {
     const { post, classification } = input;
-    const maxCloseTime = new Date(Date.now() + config.trading.tradingHorizonMinutes * MS_PER_MINUTE).toISOString();
+    const maxCloseHorizonMinutes = await resolveMaxCloseHorizonMinutes(classification.topic);
+    const nowMs = Date.now();
+    const minCloseTime = new Date(nowMs).toISOString();
+    const maxCloseTime = new Date(nowMs + maxCloseHorizonMinutes * MS_PER_MINUTE).toISOString();
 
     const anyOpenMarket = await getCandidateMarketsByTopic({
         topic: classification.topic,
+        status: KALSHI_MARKET_STATUS.ACTIVE,
+        minCloseTime,
         maxCloseTime,
         minSeriesVolume: 0,
         limit: 1
@@ -68,6 +88,8 @@ export async function assembleCandidates(input: TradeDecisionInput): Promise<Can
 
     const liquidMarkets = await getCandidateMarketsByTopic({
         topic: classification.topic,
+        status: KALSHI_MARKET_STATUS.ACTIVE,
+        minCloseTime,
         maxCloseTime,
         minSeriesVolume: config.trading.minSeriesVolume,
         limit: config.trading.maxCandidates

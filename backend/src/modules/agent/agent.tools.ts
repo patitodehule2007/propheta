@@ -9,6 +9,7 @@ import {
 import { getQuoteSamplesSince } from "../../repositories/redis/marketQuote.repository";
 import { logger } from "../../shared/services/logger";
 import { isScrapableUrl } from "../../shared/services/webScraper";
+import { KALSHI_MARKET_STATUS } from "../kalshi";
 import { scrapePageCached } from "../scraping/scrapeCache.service";
 import { computeFeePerContractCents } from "../trading/pricing";
 import { getLiveOrCachedQuote } from "../trading/quote.service";
@@ -242,7 +243,14 @@ const findMarketsTool: ToolRegistryEntry = {
         const tags = Array.isArray(input.tags) ? input.tags.map(String) : null;
         const seriesTicker = typeof input.seriesTicker === "string" ? input.seriesTicker : null;
         const queryText = typeof input.query === "string" ? input.query : null;
-        const results = await searchKalshiMarkets({ tags, seriesTicker, queryText, limit: MAX_QUOTE_TICKERS });
+        const results = await searchKalshiMarkets({
+            status: KALSHI_MARKET_STATUS.ACTIVE,
+            minCloseTime: new Date().toISOString(),
+            tags,
+            seriesTicker,
+            queryText,
+            limit: MAX_QUOTE_TICKERS
+        });
         if (results.length === 0) return "No open markets matched that search.";
         return JSON.stringify(results);
     }

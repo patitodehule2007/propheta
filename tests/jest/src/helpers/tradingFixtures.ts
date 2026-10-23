@@ -37,7 +37,8 @@ export type Direction = (typeof Direction)[keyof typeof Direction];
 /**
  * kalshi-mock fixture tickers (mocks/kalshi-mock/src/state.ts). Every
  * KXTEST market is a candidate for MONETARY_POLICY_FED,
- * INTERNATIONAL_CONFLICT and CRYPTO_REGULATION.
+ * APPOINTMENTS_PERSONNEL, INTERNATIONAL_CONFLICT and CRYPTO_REGULATION
+ * (tests/jest/fixtures/trading_topic_series.sql).
  */
 export const TestTicker = {
     /** Baseline book no test mutates. */
@@ -82,7 +83,7 @@ export const Signals = {
     directionUnclear: signal(MonitoredUser.REAL_DONALD_TRUMP, Topic.INTERNATIONAL_CONFLICT, Direction.UNCLEAR),
     novelty: signal(MonitoredUser.JD_VANCE, Topic.SHUTDOWN_BUDGET, Direction.INCREASES),
     // Gate 2
-    noLiquidMarket: signal(MonitoredUser.WHITE_HOUSE, Topic.APPOINTMENTS_PERSONNEL, Direction.INCREASES),
+    noLiquidMarket: signal(MonitoredUser.WHITE_HOUSE, Topic.SHUTDOWN_BUDGET, Direction.INCREASES),
     // Gate 3
     modelNoTrade: signal(MonitoredUser.JD_VANCE, Topic.CRYPTO_REGULATION, Direction.INCREASES),
     agentError: signal(MonitoredUser.JD_VANCE, Topic.CRYPTO_REGULATION, Direction.DECREASES),

@@ -141,6 +141,10 @@ services:
             - test-network
         environment:
             <<: *test-environment
+        # Swaps the real series whitelist for one that only names kalshi-mock's
+        # fixture series.
+        volumes:
+            - ./fixtures/trading_topic_series.sql:/app/sql/seed/trading_topic_series.sql:ro
         command: ["seed"]
 
     redis-test:

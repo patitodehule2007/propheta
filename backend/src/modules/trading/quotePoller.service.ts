@@ -2,7 +2,7 @@ import { config } from "../../config";
 import { getOpenMarketTickers } from "../../repositories/postgres/trading.repository";
 import { recordQuoteSample } from "../../repositories/redis/marketQuote.repository";
 import { logger } from "../../shared/services/logger";
-import { kalshiService } from "../kalshi";
+import { KALSHI_MARKET_STATUS, kalshiService } from "../kalshi";
 import { deriveQuote } from "./pricing";
 
 /** Kalshi's batch orderbook endpoint accepts at most 100 tickers per call. */
@@ -29,12 +29,16 @@ function chunk<T>(items: T[], size: number): T[][] {
 export async function pollQuotesOnce(): Promise<void> {
     if (!config.kalshi.apiKeyId || !config.kalshi.privateKey) return;
 
-    const tickers = await getOpenMarketTickers(MAX_WATCHED_TICKERS);
+    const tickers = await getOpenMarketTickers({
+        status: KALSHI_MARKET_STATUS.ACTIVE,
+        minCloseTime: new Date().toISOString(),
+        limit: MAX_WATCHED_TICKERS
+    });
     if (tickers.length === 0) return;
 
     for (const batch of chunk(tickers, MAX_TICKERS_PER_BATCH)) {
         try {
-            const { orderbooks } = await kalshiService.getMarketOrderbooks({ tickers: batch.join(",") });
+            const { orderbooks } = await kalshiService.getMarketOrderbooks({ tickers: batch });
             const tsMs = Date.now();
 
             await Promise.all(

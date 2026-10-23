@@ -243,8 +243,11 @@ export interface TickerOrderbook {
 }
 
 export interface GetMarketOrderbooksParams {
-    /** Comma-separated tickers, up to 100 per call. */
-    tickers: string;
+    /**
+     * Up to 100 tickers per call, sent as repeated `tickers=` params. Unlike
+     * `GetSeriesListParams.tags`, a comma-joined value is read as one ticker.
+     */
+    tickers: string[];
     depth?: number;
 }
 
@@ -276,8 +279,8 @@ export interface Series {
     /** Extra trading restrictions specific to this series -- read before automating on it. */
     additional_prohibitions?: string[];
     product_metadata?: Record<string, unknown> | null;
-    volume?: number;
-    volume_24h?: number;
+    /** Present only when requested with `include_volume`. */
+    volume_fp?: FixedPointCount;
     last_updated_ts?: string;
 }
 
@@ -295,14 +298,19 @@ export interface GetSeriesListResponse {
     series: Series[] | null;
 }
 
+export interface GetSeriesParams {
+    /** Without it the response carries no `volume_fp`. */
+    include_volume?: boolean;
+}
+
 export interface GetSeriesResponse {
     series: Series;
 }
 
 /**
  * Map of series categories to the tag vocabulary Kalshi actually uses.
- * Refreshed periodically (daily) and used to build the topic -> tags mapping
- * in `topic_market_map`; not called on the trading critical path.
+ * Used to discover series when reviewing the topic -> series whitelist; not
+ * called on the trading critical path.
  */
 export interface GetTagsByCategoriesResponse {
     categories: Record<string, string[]>;

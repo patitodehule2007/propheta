@@ -1,25 +1,26 @@
--- Handwritten topic -> Kalshi tag mapping (docs/backend/tradeDecision.md
--- open decision 4: human-reviewed, never generated). Tags are matched against
--- docs/projectDefenition/initial_investigation.md §5.3's GET /series?tags=
--- vocabulary. Reconciled against the live GET /search/tags_by_categories
--- response (Kalshi has no tariff/immigration/budget/regulation tags, so those
--- topics use the closest adjacent tags). NONE has no row -- the pre-gate
--- already discards it before candidate assembly ever runs.
+-- Handwritten topic table (docs/backend/tradeDecision.md open decision 4:
+-- human-reviewed, never generated). Which Kalshi series each topic reaches
+-- lives in trading_topic_series.sql. NONE has no row -- the pre-gate already
+-- discards it before candidate assembly ever runs.
 
--- Category names (Politics, Economics, Financials) are not tags and match no
--- series -- only the tags listed under each category are valid filters.
+-- max_close_horizon_minutes: how far out a candidate market may close. NULL
+-- falls back to the global TRADE_HORIZON_MINUTES. Tariff, appointment and
+-- other political markets settle on month-to-year timelines, so 180 days
+-- (259200 minutes); Fed decision markets close at each FOMC meeting and keep
+-- the global window. Exits are timed by the exit policy regardless.
 
--- Updated as of 9/10/26
-INSERT INTO topic_market_map (topic, kalshi_tags, default_horizon_minutes)
+-- Updated as of 23/10/26
+INSERT INTO topic_market_map (topic, default_horizon_minutes, max_close_horizon_minutes)
 VALUES
-    ('TARIFFS_TRADE', '["Trump", "Inflation", "Jobs & Economy"]'::jsonb, 240),
-    ('APPOINTMENTS_PERSONNEL', '["Trump", "Congress"]'::jsonb, 720),
-    ('MONETARY_POLICY_FED', '["Fed", "Interest Rates"]'::jsonb, 180),
-    ('INTERNATIONAL_CONFLICT', '["International", "Iran"]'::jsonb, 60),
-    ('SHUTDOWN_BUDGET', '["Congress", "Jobs & Economy"]'::jsonb, 360),
-    ('CRYPTO_REGULATION', '["Crypto", "Congress"]'::jsonb, 480),
-    ('IMMIGRATION', '["Trump", "SCOTUS & courts"]'::jsonb, 720)
+    ('TARIFFS_TRADE', 240, 259200),
+    ('APPOINTMENTS_PERSONNEL', 720, 259200),
+    ('MONETARY_POLICY_FED', 180, NULL),
+    ('INTERNATIONAL_CONFLICT', 60, 259200),
+    ('SHUTDOWN_BUDGET', 360, 259200),
+    ('CRYPTO_REGULATION', 480, 259200),
+    ('IMMIGRATION', 720, 259200)
 ON CONFLICT (topic) DO UPDATE
-SET kalshi_tags = EXCLUDED.kalshi_tags,
-    default_horizon_minutes = EXCLUDED.default_horizon_minutes,
-    updated_at = NOW();
+    SET
+        default_horizon_minutes = EXCLUDED.default_horizon_minutes,
+        max_close_horizon_minutes = EXCLUDED.max_close_horizon_minutes,
+        updated_at = NOW();

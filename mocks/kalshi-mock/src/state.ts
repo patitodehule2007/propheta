@@ -3,20 +3,19 @@
  *
  * Only the surface `backend/src/modules/kalshi` and `backend/src/modules/trading`
  * actually call is implemented -- this is a test double, not a full Kalshi
- * clone. Series tags are chosen against
- * `database/init/sql/seed/trading_topic_map.sql` so each series is reachable
- * from a known set of topics and from no other:
+ * clone. Which topics reach each series is decided by the test stack's
+ * whitelist, `tests/jest/fixtures/trading_topic_series.sql`, not by tags:
  *
- * - `KXTARIFF` ("Inflation") -- TARIFFS_TRADE only. The happy-path market.
- * - `KXTEST` ("Fed", "Iran", "Crypto") -- MONETARY_POLICY_FED,
+ * - `KXTARIFF` -- TARIFFS_TRADE only. The happy-path market.
+ * - `KXTEST` -- MONETARY_POLICY_FED, APPOINTMENTS_PERSONNEL,
  *   INTERNATIONAL_CONFLICT and CRYPTO_REGULATION. One market per gate/exit
  *   scenario, so a test that mutates a book or a close time never touches
- *   another test's position. Three topics, so integration tests have enough
- *   distinct (author, topic, direction) combinations to stay clear of the
- *   pre-gate's novelty heuristic.
- * - `KXLOWVOL` ("Congress") -- APPOINTMENTS_PERSONNEL and SHUTDOWN_BUDGET.
- *   Series volume below the test stack's TRADE_MIN_SERIES_VOLUME, so gate 2
- *   finds a market but no liquid one.
+ *   another test's position. Several topics, so integration tests have
+ *   enough distinct (author, topic, direction) combinations to stay clear of
+ *   the pre-gate's novelty heuristic.
+ * - `KXLOWVOL` -- the only series SHUTDOWN_BUDGET reaches. Series volume
+ *   below the test stack's TRADE_MIN_SERIES_VOLUME, so gate 2 finds a market
+ *   but no liquid one.
  *
  * IMMIGRATION deliberately resolves to no series at all (gate 2's
  * `no_open_market` case).
@@ -32,8 +31,7 @@ export interface MockSeries {
     fee_type: "quadratic" | "quadratic_with_maker_fees" | "flat";
     fee_multiplier: number;
     additional_prohibitions: string[];
-    volume: number;
-    volume_24h: number;
+    volume_fp: string;
     last_updated_ts: string;
 }
 
@@ -44,7 +42,9 @@ export interface MockMarket {
     market_type: "binary";
     yes_sub_title: string;
     no_sub_title: string;
-    status: "open" | "closed" | "settled";
+    // Lifecycle values, as the real API returns them -- not the `status`
+    // query filter's vocabulary (see MARKET_STATUS_FILTERS in index.ts).
+    status: "active" | "closed" | "finalized";
     close_time: string;
     updated_time: string;
     rules_primary: string;
@@ -72,7 +72,8 @@ const nowIso = new Date().toISOString();
 const closeTime = new Date(Date.now() + 7 * MS_PER_DAY).toISOString();
 const closingSoonTime = new Date(Date.now() + CLOSING_SOON_MINUTES * MS_PER_MINUTE).toISOString();
 
-function buildSeries(overrides: Pick<MockSeries, "ticker" | "title" | "tags" | "volume">): MockSeries {
+function buildSeries(overrides: Pick<MockSeries, "ticker" | "title" | "tags"> & { volume: number }): MockSeries {
+    const { volume, ...rest } = overrides;
     return {
         frequency: "one-off",
         category: "Economics",
@@ -80,9 +81,9 @@ function buildSeries(overrides: Pick<MockSeries, "ticker" | "title" | "tags" | "
         fee_type: "quadratic",
         fee_multiplier: 0.07,
         additional_prohibitions: [],
-        volume_24h: Math.round(overrides.volume / 6),
+        volume_fp: `${volume}.00`,
         last_updated_ts: nowIso,
-        ...overrides
+        ...rest
     };
 }
 
@@ -93,7 +94,7 @@ function buildMarket(
     return {
         market_type: "binary",
         no_sub_title: `Not: ${overrides.yes_sub_title}`,
-        status: "open",
+        status: "active",
         close_time: closeTime,
         updated_time: nowIso,
         rules_primary: `This market resolves YES if ${overrides.yes_sub_title.toLowerCase()}`,

@@ -19,6 +19,16 @@ export const KALSHI_SIGNATURE_DIGEST = "sha256";
 export const KALSHI_SIGNATURE_ENCODING = "base64";
 
 /**
+ * The `status` query filter and the `status` a market object carries use two
+ * different vocabularies: `GET /markets?status=open` returns markets whose
+ * own `status` is `active`. Cached rows store the response value.
+ */
+export const KALSHI_MARKET_STATUS = {
+    FILTER_OPEN: "open",
+    ACTIVE: "active"
+} as const;
+
+/**
  * REST paths, relative to the configured base URL (which already ends in
  * `/trade-api/v2`). Parameterised segments are encoded by the builders so no
  * caller has to remember to do it.

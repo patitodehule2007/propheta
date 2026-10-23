@@ -23,7 +23,9 @@ The pre-push git hook runs `tests/jest/run.sh` automatically.
   anchor and merges them into every service, so no environment file is needed.
   The database runs on tmpfs and the whole stack is torn down when the run ends.
 - `db-init-test` runs knex migrations and loads the SQL assets.
-- `db-seed-test` loads the demo fixtures from `database/init/sql/seed/`.
+- `db-seed-test` loads the demo fixtures from `database/init/sql/seed/`, with
+  `fixtures/trading_topic_series.sql` mounted over the real topic -> series
+  whitelist so the market cache only refreshes kalshi-mock's series.
 - `backend-test` is the real API image; the suite hits it over HTTP.
 - `run.sh` drives the one-shot services with `run --rm` so each step can be
   sequenced and reported independently.

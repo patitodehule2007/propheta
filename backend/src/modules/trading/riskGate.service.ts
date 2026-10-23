@@ -1,6 +1,7 @@
 import { config } from "../../config";
 import { getKalshiMarketByTicker, getOpenExposureByTopic } from "../../repositories/postgres/trading.repository";
 import { VetoReason } from "../../shared/core/decisionLog.constants";
+import { KALSHI_MARKET_STATUS } from "../kalshi";
 import { computeFeePerContractCents } from "./pricing";
 import { getLiveOrCachedQuote } from "./quote.service";
 import { CandidateQuote, TradeDecisionInput } from "./trading.types";
@@ -49,7 +50,7 @@ export async function runRiskGate(
     }
 
     const market = await getKalshiMarketByTicker(ticker);
-    if (!market || market.status !== "open") {
+    if (!market || market.status !== KALSHI_MARKET_STATUS.ACTIVE) {
         return { approved: false, reason: VetoReason.MARKET_NOT_OPEN };
     }
 
