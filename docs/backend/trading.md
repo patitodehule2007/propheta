@@ -140,7 +140,9 @@ Only runs when the model proposed `BUY`. In order: whitelist (the ticker must
 be one of gate 2's own candidates, still `open`) → recompute the edge against
 a **freshly re-fetched** quote (the LLM call took seconds; the candidate's
 own quote can be stale) → spread limit → slippage limit → recomputed fee vs.
-`entryFee + expectedExitFee + MIN_NET_EDGE_CENTS` → topic exposure cap →
+`entryFee + expectedExitFee + MIN_NET_EDGE_CENTS`, with the model's edge
+first shrunk by conviction (`TRADE_EDGE_SHRINKAGE`, see
+`docs/backend/tradeDecision.md` §"Risk profiles") → topic exposure cap →
 per-trade exposure cap, clamped by top-of-book depth. Any failure vetoes with
 a `VetoReason` and a `RISK_VALIDATION` / `REJECTED` row.
 
@@ -289,11 +291,13 @@ All in `config.trading` (`backend/src/config/index.ts`):
 
 | Var | Default | Purpose |
 | --- | --- | --- |
-| `TRADE_MIN_CONFIDENCE` | `0.6` | Gate 1 floor. |
+| `TRADE_RISK_PROFILE` | `BALANCED` | `CONSERVATIVE` / `BALANCED` / `AGGRESSIVE` preset for the four appetite vars below marked *profile*. |
+| `TRADE_MIN_CONFIDENCE` | *profile* (`0.6`) | Gate 1 floor. |
+| `TRADE_EDGE_SHRINKAGE` | *profile* (`0.5`) | Gate 4: how far low conviction shrinks the model's edge (0 = none, 1 = full). |
 | `MAX_SPREAD_CENTS` | `4` | Gate 4 spread limit. |
 | `MAX_SLIPPAGE_CENTS` | `10` | Gate 4 slippage-since-signal limit. |
-| `MIN_NET_EDGE_CENTS` | `2` | Gate 4 edge floor, on top of round-trip fees. |
-| `MAX_TRADE_EXPOSURE_PCT` | `2` | Per-trade cap, % of `TRADE_CAPITAL_BASE_CENTS`. |
+| `MIN_NET_EDGE_CENTS` | *profile* (`2`) | Gate 4 edge floor, on top of round-trip fees. |
+| `MAX_TRADE_EXPOSURE_PCT` | *profile* (`2`) | Per-trade cap, % of `TRADE_CAPITAL_BASE_CENTS`. |
 | `MAX_TOPIC_EXPOSURE_PCT` | `5` | Per-topic cap. |
 | `MAX_DAILY_LOSS_PCT` | `5` | Gate 1 kill switch. |
 | `MAX_ORDERS_PER_MINUTE` | `3` | Gate 1 loop guard. |

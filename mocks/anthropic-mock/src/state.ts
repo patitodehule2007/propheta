@@ -88,11 +88,13 @@ export type SelectionMode = (typeof SelectionMode)[keyof typeof SelectionMode];
 export interface SelectionOverrides {
     ticker?: string;
     fairProbability?: number;
+    conviction?: number;
     horizonMinutes?: number;
     mode?: SelectionMode;
 }
 
 const DEFAULT_FAIR_PROBABILITY = 0.6;
+const DEFAULT_CONVICTION = 0.75;
 const DEFAULT_HORIZON_MINUTES = 180;
 const SELECTION_MODES: readonly string[] = Object.values(SelectionMode);
 
@@ -100,17 +102,20 @@ const SELECTION_MODES: readonly string[] = Object.values(SelectionMode);
  * Reads the selection-stage markers out of the post text, which the backend
  * embeds verbatim in the selection prompt's `<post>` block:
  * `[[ticker:KXTEST-SL]]` (propose this ticker, candidate or not),
- * `[[fair:0.44]]`, `[[horizon:0.1]]` and `[[selection:no_trade|invalid]]`.
+ * `[[fair:0.44]]`, `[[conviction:0.2]]`, `[[horizon:0.1]]` and
+ * `[[selection:no_trade|invalid]]`.
  */
 export function extractSelectionOverrides(text: string): SelectionOverrides {
     const tickerMatch = text.match(/\[\[ticker:([A-Z0-9-]+)\]\]/);
     const fairMatch = text.match(/\[\[fair:([\d.]+)\]\]/);
+    const convictionMatch = text.match(/\[\[conviction:([\d.]+)\]\]/);
     const horizonMatch = text.match(/\[\[horizon:([\d.]+)\]\]/);
     const modeMatch = text.match(/\[\[selection:([a-z_]+)\]\]/);
     const mode = modeMatch && SELECTION_MODES.includes(modeMatch[1]) ? (modeMatch[1] as SelectionMode) : undefined;
     return {
         ticker: tickerMatch ? tickerMatch[1] : undefined,
         fairProbability: fairMatch ? Number(fairMatch[1]) : undefined,
+        conviction: convictionMatch ? Number(convictionMatch[1]) : undefined,
         horizonMinutes: horizonMatch ? Number(horizonMatch[1]) : undefined,
         mode
     };
@@ -135,7 +140,7 @@ export function buildTradeProposal(
         ticker,
         outcomeSide: ticker ? "YES" : null,
         fairProbability: ticker ? (overrides.fairProbability ?? DEFAULT_FAIR_PROBABILITY) : null,
-        conviction: 0.75,
+        conviction: overrides.conviction ?? DEFAULT_CONVICTION,
         horizonMinutes: overrides.horizonMinutes ?? DEFAULT_HORIZON_MINUTES,
         noTradeReason: ticker ? null : noTradeReason,
         rejectedCandidates: candidateTickers

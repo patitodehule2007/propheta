@@ -135,10 +135,11 @@ more means the candidate set was wrong. Latency is the entire edge here.
 The veto layer. In order:
 
 1. The proposed ticker must be in the candidate whitelist, still open.
-2. Recompute the edge: `fairProbability − yesAsk` must exceed
-   `entryFee + expectedExitFee + MIN_NET_EDGE_CENTS`. §5.8's round trip pays the
-   taker fee twice — ~3.5 % of notional at 50¢ — so the signal must move the
-   price by more than that before the trade means anything.
+2. Recompute the edge, shrunk by conviction (see [Risk profiles](#risk-profiles)):
+   `effectiveEdge = (fairPriceOnSide − ask) × (1 − TRADE_EDGE_SHRINKAGE × (1 − conviction))`
+   must exceed `entryFee + expectedExitFee + MIN_NET_EDGE_CENTS`. §5.8's round
+   trip pays the taker fee twice, so the signal must move the price by more
+   than that before the trade means anything.
 3. Apply every §6.3 limit: spread, slippage since signal, per-trade exposure,
    per-topic exposure, daily loss, orders per minute.
 4. Derive the size (1–2 % of capital, clamped by remaining topic budget and by
@@ -150,6 +151,34 @@ The veto layer. In order:
 6. Mint the `client_order_id` UUID and persist the proposal **before** anything
    goes over the wire (§5.5 — idempotency is the only defence against double
    execution on a network timeout).
+
+### Risk profiles
+
+The model is an estimator; how much of its estimate the system acts on is an
+operator setting, applied only here and in gate 1 — never in a prompt, where
+it would bias the estimate itself. `TRADE_RISK_PROFILE`
+(`backend/src/config/riskProfiles.ts`) selects a preset:
+
+| Profile | `TRADE_MIN_CONFIDENCE` | `MIN_NET_EDGE_CENTS` | `MAX_TRADE_EXPOSURE_PCT` | `TRADE_EDGE_SHRINKAGE` |
+| --- | --- | --- | --- | --- |
+| `CONSERVATIVE` | 0.7 | 4 | 1 | 1 |
+| `BALANCED` (default) | 0.6 | 2 | 2 | 0.5 |
+| `AGGRESSIVE` | 0.5 | 1 | 3 | 0 |
+
+Each field's own env var, when set to a non-empty value, overrides the preset.
+An unknown profile name fails startup.
+
+`TRADE_EDGE_SHRINKAGE` is the one knob for trusting a hesitant estimate: 0
+takes the model's fair value at face value, 1 scales the edge fully by
+conviction (conviction 0.5 halves it). There is deliberately no separate
+minimum-conviction threshold — it would double-count the same signal.
+
+Every gate-4 outcome that got as far as the edge check logs `edgeMetrics`
+(`rawEdgeCents`, `effectiveEdgeCents`, `requiredEdgeCents`, `conviction`,
+`edgeShrinkage`, `riskProfile`): in `RISK_VALIDATION` metadata on a veto, in
+`ORDER` metadata on approval. `TRADE_DECISION` metadata carries
+`fairProbability` and `riskProfile`, including on `NO_TRADE`. Together they
+let past decisions be replayed under another profile before changing it live.
 
 ### 5. Execution
 
@@ -408,7 +437,7 @@ the existing `DiscardReason` wire contract.
 | --- | --- |
 | `hallucinated_ticker` | Not in the candidate whitelist. |
 | `market_not_open` | State changed during the run. |
-| `edge_below_cost` | `edge < entryFee + exitFee + MIN_NET_EDGE_CENTS`. |
+| `edge_below_cost` | Conviction-shrunk `effectiveEdge ≤ entryFee + exitFee + MIN_NET_EDGE_CENTS`. |
 | `spread_over_limit` | §6.3, 3–4¢. |
 | `slippage_over_limit` | Moved too far since the signal. |
 | `exposure_cap_trade` | > 1–2 % of capital. |
@@ -692,7 +721,9 @@ for a bot that needs fills and price movement.
 
 ### Config — `config.trading`
 
-Thresholds are env-driven, never inline: `TRADE_MIN_CONFIDENCE`,
+Thresholds are env-driven, never inline: `TRADE_RISK_PROFILE` (presets for
+`TRADE_MIN_CONFIDENCE`, `MIN_NET_EDGE_CENTS`, `MAX_TRADE_EXPOSURE_PCT`,
+`TRADE_EDGE_SHRINKAGE`, each overridable), `TRADE_MIN_CONFIDENCE`,
 `MAX_SPREAD_CENTS`, `MAX_SLIPPAGE_CENTS`, `MIN_NET_EDGE_CENTS`,
 `MAX_TRADE_EXPOSURE_PCT`, `MAX_TOPIC_EXPOSURE_PCT`, `MAX_DAILY_LOSS_PCT`,
 `MAX_ORDERS_PER_MINUTE`, `SELECTION_MAX_ITERATIONS`, `SELECTION_MAX_TOOL_CALLS`.

@@ -19,7 +19,7 @@ import {
     computeTargetPriceCents,
     minutesUntilClose
 } from "./exitPolicy.service";
-import { RiskGateResult } from "./riskGate.service";
+import { RiskEdgeMetrics, RiskGateResult } from "./riskGate.service";
 import { TradeOrderStatus } from "./trading.constants";
 import { TradeDecisionInput } from "./trading.types";
 import { TradeProposalModelOutput } from "./trading.schema";
@@ -60,7 +60,7 @@ export async function executeApprovedTrade(exec: ExecutionInput): Promise<void> 
             status: "REJECTED",
             vetoReason: VetoReason.CLOSING_TOO_SOON
         });
-        await writeRiskValidationLog(input, VetoReason.CLOSING_TOO_SOON);
+        await writeRiskValidationLog(input, VetoReason.CLOSING_TOO_SOON, risk.edgeMetrics);
         return;
     }
 
@@ -255,18 +255,23 @@ async function insertPositionAndLog(params: PositionAndLogParams): Promise<void>
             deadlineAt: params.deadlineAt,
             stopPriceCents: params.stopPolicy.stopPriceCents,
             targetPriceCents: params.targetPriceCents,
-            horizonSource: params.horizonSource
+            horizonSource: params.horizonSource,
+            edgeMetrics: params.risk.edgeMetrics
         }
     });
 }
 
-async function writeRiskValidationLog(input: TradeDecisionInput, reason: VetoReason): Promise<void> {
+async function writeRiskValidationLog(
+    input: TradeDecisionInput,
+    reason: VetoReason,
+    edgeMetrics: RiskEdgeMetrics
+): Promise<void> {
     await insertDecisionLog({
         ingestedPostId: input.post.id,
         platformPostId: input.post.platformPostId,
         stage: DecisionStage.RISK_VALIDATION,
         decision: DecisionOutcome.REJECTED,
         reason,
-        metadata: { ...input.classification }
+        metadata: { ...input.classification, edgeMetrics }
     });
 }

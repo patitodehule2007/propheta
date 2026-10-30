@@ -1,3 +1,4 @@
+import { config } from "../../config";
 import { insertDecisionLog } from "../../repositories/postgres/ingestion.repository";
 import {
     getTopicMarketMap,
@@ -74,7 +75,9 @@ export async function runTradeDecision(input: TradeDecisionInput): Promise<void>
             metadata: {
                 ticker: proposal.ticker,
                 outcomeSide: proposal.outcomeSide,
+                fairProbability: proposal.fairProbability,
                 conviction: proposal.conviction,
+                riskProfile: config.trading.riskProfile,
                 reasoning: proposal.reasoning,
                 toolCallCount: selection.toolCallCount,
                 stopReason: selection.stopReason
@@ -96,7 +99,7 @@ export async function runTradeDecision(input: TradeDecisionInput): Promise<void>
                 stage: DecisionStage.RISK_VALIDATION,
                 decision: DecisionOutcome.REJECTED,
                 reason: risk.reason,
-                metadata: { ticker: proposal.ticker }
+                metadata: { ticker: proposal.ticker, edgeMetrics: risk.edgeMetrics }
             });
             return;
         }

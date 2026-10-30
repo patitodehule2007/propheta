@@ -2,6 +2,11 @@
  * Centralized application configuration. Never read process.env anywhere else.
  */
 
+import { parseRiskProfile, RISK_PROFILE_PRESETS, RiskProfile } from "./riskProfiles";
+
+export { RiskProfile, RISK_PROFILE_PRESETS } from "./riskProfiles";
+export type { RiskProfilePreset } from "./riskProfiles";
+
 /**
  * Reads a required environment variable, throwing when it is missing or empty.
  * @param name - name of the environment variable
@@ -19,6 +24,19 @@ function requiredEnv(name: string): string {
 function getEnv(name: string): string | undefined {
     return process.env[name];
 }
+
+/**
+ * Reads an optional numeric override. Unset and empty both mean "no
+ * override", so a blank `VAR=` line in an env file falls back to the preset
+ * instead of becoming 0.
+ */
+function optionalNumberEnv(name: string): number | undefined {
+    const value = getEnv(name);
+    return value === undefined || value.trim() === "" ? undefined : Number(value);
+}
+
+const riskProfile = parseRiskProfile(getEnv("TRADE_RISK_PROFILE") ?? RiskProfile.BALANCED);
+const riskPreset = RISK_PROFILE_PRESETS[riskProfile];
 
 export const config = {
     env: getEnv("NODE_ENV") ?? "development",
@@ -104,11 +122,15 @@ export const config = {
     dryRun: (getEnv("DRY_RUN") ?? "true") === "true",
     trading: {
         // --- Gates (docs/backend/tradeDecision.md §6.3 + Config) -------------
-        minConfidence: Number(getEnv("TRADE_MIN_CONFIDENCE") ?? 0.6),
+        // The risk profile sets the appetite fields below; each one's own env
+        // var, when set, overrides the preset.
+        riskProfile,
+        minConfidence: optionalNumberEnv("TRADE_MIN_CONFIDENCE") ?? riskPreset.minConfidence,
         maxSpreadCents: Number(getEnv("MAX_SPREAD_CENTS") ?? 4),
         maxSlippageCents: Number(getEnv("MAX_SLIPPAGE_CENTS") ?? 5),
-        minNetEdgeCents: Number(getEnv("MIN_NET_EDGE_CENTS") ?? 2),
-        maxTradeExposurePct: Number(getEnv("MAX_TRADE_EXPOSURE_PCT") ?? 2),
+        minNetEdgeCents: optionalNumberEnv("MIN_NET_EDGE_CENTS") ?? riskPreset.minNetEdgeCents,
+        maxTradeExposurePct: optionalNumberEnv("MAX_TRADE_EXPOSURE_PCT") ?? riskPreset.maxTradeExposurePct,
+        edgeShrinkage: optionalNumberEnv("TRADE_EDGE_SHRINKAGE") ?? riskPreset.edgeShrinkage,
         maxTopicExposurePct: Number(getEnv("MAX_TOPIC_EXPOSURE_PCT") ?? 5),
         maxDailyLossPct: Number(getEnv("MAX_DAILY_LOSS_PCT") ?? 5),
         maxOrdersPerMinute: Number(getEnv("MAX_ORDERS_PER_MINUTE") ?? 3),

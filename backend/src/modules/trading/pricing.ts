@@ -124,3 +124,52 @@ export function computeFeeCents(priceCents: number, contracts: number, feeType: 
 export function computeFeePerContractCents(priceCents: number, feeType: string, feeMultiplier: number): number {
     return computeFeeCents(priceCents, 1, feeType, feeMultiplier);
 }
+
+export interface EdgeInputs {
+    /** Model's post-statement probability that the market resolves YES, 0-1. */
+    fairProbability: number;
+    /** Model's confidence in that estimate, 0-1. */
+    conviction: number;
+    outcomeSide: "YES" | "NO";
+    /** Ask on the side being bought, cents. */
+    entryPriceCents: number;
+    /** Round-trip fee estimate per contract, cents. */
+    roundTripFeeCents: number;
+    /** Edge required on top of fees, cents. */
+    minNetEdgeCents: number;
+    /** 0 trusts the fair value outright; 1 scales the edge fully by conviction. */
+    edgeShrinkage: number;
+}
+
+export interface EdgeMetrics {
+    rawEdgeCents: number;
+    effectiveEdgeCents: number;
+    requiredEdgeCents: number;
+    conviction: number;
+    edgeShrinkage: number;
+}
+
+/**
+ * Gate 4's edge arithmetic. The model's raw edge is shrunk toward the quoted
+ * price as conviction falls -- `effective = raw x (1 - shrinkage x (1 - conviction))`
+ * -- so one setting controls how much a hesitant estimate is trusted, with no
+ * separate conviction threshold to double-count.
+ * @param inputs - the proposal's estimate, the live entry price and the cost bar
+ * @returns raw, effective and required edge, all per contract in cents
+ */
+export function computeEdge(inputs: EdgeInputs): EdgeMetrics {
+    const fairPriceCentsOnSide =
+        inputs.outcomeSide === "YES"
+            ? inputs.fairProbability * CENTS_PER_DOLLAR
+            : (1 - inputs.fairProbability) * CENTS_PER_DOLLAR;
+    const rawEdgeCents = fairPriceCentsOnSide - inputs.entryPriceCents;
+    const trustFactor = 1 - inputs.edgeShrinkage * (1 - inputs.conviction);
+
+    return {
+        rawEdgeCents,
+        effectiveEdgeCents: rawEdgeCents * trustFactor,
+        requiredEdgeCents: inputs.roundTripFeeCents + inputs.minNetEdgeCents,
+        conviction: inputs.conviction,
+        edgeShrinkage: inputs.edgeShrinkage
+    };
+}

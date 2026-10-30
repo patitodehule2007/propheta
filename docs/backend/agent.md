@@ -306,7 +306,7 @@ posts:
 - Classification: `[[topic:X]]`, `[[direction:X]]`, `[[confidence:N]]`.
 - Selection agent (gate 3, read from the post embedded in the selection
   prompt): `[[ticker:X]]` (propose this ticker, even one that is not a
-  candidate), `[[fair:N]]`, `[[horizon:N]]`, `[[selection:no_trade]]` (a
+  candidate), `[[fair:N]]`, `[[conviction:N]]`, `[[horizon:N]]`, `[[selection:no_trade]]` (a
   schema-valid `NO_TRADE`, reason `rules_mismatch`) and
   `[[selection:invalid]]` (Phase B output that fails `tradeProposalSchema`).
 

@@ -94,6 +94,8 @@ export const Signals = {
     edgeBelowCost: signal(MonitoredUser.WHITE_HOUSE, Topic.INTERNATIONAL_CONFLICT, Direction.DECREASES),
     exposureCapTrade: signal(MonitoredUser.WHITE_HOUSE, Topic.CRYPTO_REGULATION, Direction.INCREASES),
     slippageOverLimit: signal(MonitoredUser.WHITE_HOUSE, Topic.CRYPTO_REGULATION, Direction.DECREASES),
+    lowConvictionShrink: signal(MonitoredUser.WHITE_HOUSE, Topic.APPOINTMENTS_PERSONNEL, Direction.INCREASES),
+    edgeMetricsLogged: signal(MonitoredUser.WHITE_HOUSE, Topic.APPOINTMENTS_PERSONNEL, Direction.DECREASES),
     // Gate 5
     closingTooSoon: signal(MonitoredUser.REAL_DONALD_TRUMP, Topic.MONETARY_POLICY_FED, Direction.INCREASES),
     // Gate 6
@@ -107,6 +109,7 @@ export const Signals = {
 export interface SelectionMarkers {
     ticker?: string;
     fairProbability?: number;
+    conviction?: number;
     horizonMinutes?: number;
     selection?: "no_trade" | "invalid";
 }
@@ -132,6 +135,7 @@ export function buildSignalText(identity: SignalIdentity, markers: SelectionMark
     ];
     if (markers.ticker !== undefined) parts.push(marker("ticker", markers.ticker));
     if (markers.fairProbability !== undefined) parts.push(marker("fair", markers.fairProbability));
+    if (markers.conviction !== undefined) parts.push(marker("conviction", markers.conviction));
     if (markers.horizonMinutes !== undefined) parts.push(marker("horizon", markers.horizonMinutes));
     if (markers.selection !== undefined) parts.push(marker("selection", markers.selection));
     parts.push(`(${randomUUID()})`);
