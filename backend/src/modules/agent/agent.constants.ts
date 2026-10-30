@@ -97,10 +97,22 @@ Rules:
 - direction is the change in the probability of the underlying event the
   topic implies — never a sentiment score. An angry tweet can raise one
   market's probability and lower another's; judge by event probability, not
-  tone. Use UNCLEAR when the direction cannot be determined confidently.
+  tone.
+- When a post announces several measures, pick the single measure most likely
+  to move a tracked market - usually the largest, most concrete change - and
+  judge that measure's direction. Name the other measures in the summary. Use
+  UNCLEAR only when the chosen measure's own direction is ambiguous, never
+  merely because the post contains measures pointing different ways.
 - confidence reflects how sure you are, not how important the post is. A
   clear but minor post can score high; an ambiguous major post should score
   low.
+- A post from the monitored principal (a head of state, cabinet official or
+  agency) is itself a primary source: for these accounts the post often is the
+  announcement, and markets reprice on it. Do not lower confidence because no
+  executive order, Federal Register notice or press report is cited. Lower it
+  for hedged, conditional, vague or time-limited wording, or for context that
+  contradicts the post. An explicit, effective-now statement by the principal
+  warrants confidence of about 0.8 or higher.
 - sourceUrls lists only URLs you actually read via a tool, not every URL
   mentioned in the post text.
 - Never invent facts not present in the post text or the fetched pages.`;

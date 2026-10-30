@@ -221,6 +221,19 @@ another's, and an angry tweet is not automatically bearish for anything.
 `summary`, `sourceUrls` (only URLs actually read via a tool, not every URL
 mentioned in the post), and `reasoning`.
 
+Two classifier rules exist because the defaults were too conservative on real
+posts (`CLASSIFICATION_SYSTEM_PROMPT`):
+
+- **Multi-measure posts** — the model picks the single measure most likely to
+  move a tracked market and judges that measure's direction. A post that
+  raises one tariff and pauses another is not `UNCLEAR`; `UNCLEAR` is reserved
+  for a chosen measure whose own direction is ambiguous. (A `signals[]` array
+  with fan-out per signal is the planned proper fix.)
+- **Principal as primary source** — a monitored principal's post is the
+  announcement. Confidence is not lowered for a missing executive order or
+  press report, only for hedged, conditional or vague wording or
+  contradicting context.
+
 ## decision_log
 
 Constants in `shared/core/decisionLog.constants.ts`:
