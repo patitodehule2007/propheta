@@ -114,7 +114,9 @@ client's `paramsSerializer`); a comma-joined value is one invalid ticker.
 `getSeries` (the market cache's path, with `include_volume: true` — otherwise
 Kalshi omits `volume_fp`) and `getSeriesList` carry the `fee_type` /
 `fee_multiplier` a series' own market cache row needs — never assume the
-default 7% quadratic fee. `getSeriesList` and `getTagsByCategories` (not text
+default schedule. `fee_multiplier` is a scale on the 0.07 base taker rate
+(`1` = standard schedule, `0.5` = half), not the rate itself:
+`fee = ceil(0.07 × fee_multiplier × C × P × (1 − P))` (`pricing.ts`). `getSeriesList` and `getTagsByCategories` (not text
 search — filter discovery over the real Kalshi tag vocabulary) are used to
 review the topic → series whitelist (`docs/backend/trading.md`), never on the
 trading critical path.

@@ -110,7 +110,7 @@ itself**:
 | `yesAsk`, `noAsk` | Kalshi publishes bids only (§5.4). `yes_ask = 1.00 − best_no_bid`. Deriving this is a documented trap and belongs in code with a Decimal type, not in a prompt. |
 | `spreadCents` | Compared against `MAX_SPREAD_CENTS` downstream; the model only needs to read it. |
 | `topOfBookContracts` | How much size is actually available at the quote. |
-| `feePerContractAtAsk` | From the series' own `fee_type` / `fee_multiplier` (§5.8) — never an assumed `0.07`. |
+| `feePerContractAtAsk` | From the series' own `fee_type` / `fee_multiplier` (§5.8): `0.07 × fee_multiplier × P × (1 − P)`, where `fee_multiplier` scales the base rate (`1` = standard). |
 | `moveSinceSignalCents` | Price now vs. price when the post landed. See the quote-cache prerequisite below. |
 
 Ranked by liquidity, capped at ~10 candidates.

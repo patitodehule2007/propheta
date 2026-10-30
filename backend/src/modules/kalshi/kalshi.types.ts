@@ -259,7 +259,9 @@ export interface GetMarketOrderbooksResponse {
 
 /**
  * How a series computes its per-contract fee.
- * `quadratic` -- 0.07 x C x P x (1-P), rounded up to the cent (the default).
+ * `quadratic` -- 0.07 x fee_multiplier x C x P x (1-P), rounded up to the
+ * cent (the default). `fee_multiplier` scales the 0.07 base rate: 1 is the
+ * standard schedule, not a 100% fee.
  * `quadratic_with_maker_fees` -- the same formula, plus a maker-side fee.
  * `flat` -- a fixed schedule, independent of price.
  * Never assume a value: always read a series' own fee_type/fee_multiplier.

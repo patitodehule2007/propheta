@@ -13,6 +13,7 @@ import { kalshiService } from "../kalshi";
 import { minutesUntilClose } from "./exitPolicy.service";
 import { computeFeePerContractCents } from "./pricing";
 import { getLiveOrCachedQuote } from "./quote.service";
+import { DEFAULT_FEE_MULTIPLIER } from "./trading.constants";
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -166,7 +167,12 @@ async function processPosition(position: OpenPosition, nowMs: number): Promise<v
         return;
     }
 
-    await closeWithTrigger(position, trigger, market?.feeType ?? "quadratic", market?.feeMultiplier ?? 0.07);
+    await closeWithTrigger(
+        position,
+        trigger,
+        market?.feeType ?? "quadratic",
+        market?.feeMultiplier ?? DEFAULT_FEE_MULTIPLIER
+    );
 }
 
 /**

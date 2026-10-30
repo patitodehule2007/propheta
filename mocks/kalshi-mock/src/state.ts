@@ -79,7 +79,8 @@ function buildSeries(overrides: Pick<MockSeries, "ticker" | "title" | "tags"> & 
         category: "Economics",
         settlement_sources: [],
         fee_type: "quadratic",
-        fee_multiplier: 0.07,
+        // Kalshi's real value for the standard schedule: a scale on 0.07.
+        fee_multiplier: 1,
         additional_prohibitions: [],
         volume_fp: `${volume}.00`,
         last_updated_ts: nowIso,

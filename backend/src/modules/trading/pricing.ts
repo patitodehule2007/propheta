@@ -77,8 +77,18 @@ export function deriveQuote(orderbook: Orderbook): DerivedQuote {
 const CENTS_PER_DOLLAR = 100;
 
 /**
+ * Kalshi's general taker rate. A series' `fee_multiplier` scales this rate
+ * (1 = the standard schedule, 0.5 = half) -- it is not the rate itself.
+ */
+export const KALSHI_BASE_TAKER_FEE_RATE = 0.07;
+
+// Float products like 0.07 * 1 * 0.1 * 0.9 * 100 land a hair above the exact
+// cent value; without the epsilon, ceil would round an exact cent up by one.
+const FEE_ROUNDING_EPSILON = 1e-9;
+
+/**
  * Per-series taker fee for `contracts` contracts at `priceCents`, rounded up
- * to the next cent -- never an assumed 7%. `quadratic` and
+ * to the next cent: `0.07 x fee_multiplier x C x P x (1-P)`. `quadratic` and
  * `quadratic_with_maker_fees` share the taker formula: this system is
  * structurally taker (it reacts to a signal and needs immediate execution),
  * so the maker component of `quadratic_with_maker_fees` never applies here.
@@ -93,7 +103,8 @@ const CENTS_PER_DOLLAR = 100;
  * @param contracts - number of contracts
  * @param feeType - the series' own fee_type, as stored (DB round-trips it as
  * plain text, like every other categorical column in this codebase)
- * @param feeMultiplier - the series' own fee_multiplier
+ * @param feeMultiplier - the series' own fee_multiplier, a scale on
+ * `KALSHI_BASE_TAKER_FEE_RATE`
  * @returns total fee for the fill, in cents, rounded up
  */
 export function computeFeeCents(priceCents: number, contracts: number, feeType: string, feeMultiplier: number): number {
@@ -102,8 +113,8 @@ export function computeFeeCents(priceCents: number, contracts: number, feeType: 
     }
 
     const priceDollars = priceCents / CENTS_PER_DOLLAR;
-    const feeDollars = feeMultiplier * contracts * priceDollars * (1 - priceDollars);
-    return Math.ceil(feeDollars * CENTS_PER_DOLLAR);
+    const feeDollars = KALSHI_BASE_TAKER_FEE_RATE * feeMultiplier * contracts * priceDollars * (1 - priceDollars);
+    return Math.ceil(feeDollars * CENTS_PER_DOLLAR - FEE_ROUNDING_EPSILON);
 }
 
 /**

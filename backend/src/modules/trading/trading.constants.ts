@@ -3,6 +3,12 @@ import { config } from "../../config";
 /** Window `get_author_recent_posts` and the novelty heuristic look back over. */
 export const RECENT_POSTS_WINDOW_DAYS = 30;
 
+/**
+ * Kalshi's standard fee schedule, used only when a position's market row is
+ * missing. A scale on `KALSHI_BASE_TAKER_FEE_RATE`, not a rate.
+ */
+export const DEFAULT_FEE_MULTIPLIER = 1;
+
 export const TradeProposalStatus = {
     PROPOSED: "PROPOSED",
     NO_TRADE: "NO_TRADE",

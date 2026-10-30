@@ -101,7 +101,8 @@ out the market closes.
 Every surviving candidate is enriched with the numbers the model must never
 derive itself: `yesAsk` / `noAsk` (Kalshi publishes bids only — see
 `pricing.ts`), `spreadCents`, `topOfBookContracts`, `feePerContractAtAsk`
-(from the series' own `fee_type` / `fee_multiplier`), and
+(from the series' own `fee_type` / `fee_multiplier`; the multiplier scales
+the 0.07 base taker rate, so `1` is the standard schedule), and
 `moveSinceSignalCents` (current ask vs. the ask recorded in the Redis quote
 cache at the post's `receivedAt` — this is why the quote poller has to be
 running continuously, not queried on demand: by the time gate 2 runs, the
