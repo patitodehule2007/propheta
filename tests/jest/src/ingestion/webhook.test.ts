@@ -64,10 +64,14 @@ describe("X webhook ingestion", () => {
             text: `plain announcement ${randomUUID()}`
         });
 
-        await waitForDecision(postId, { stage: "TWEET_RECEIVED" });
+        // Enrichment runs before analysis, so once AGENT_ANALYSIS exists a
+        // LINKS_ENRICHED row would already have been written. Asserting the
+        // exact stage list instead raced the analysis stage.
+        await waitForDecision(postId, { stage: "AGENT_ANALYSIS" });
         const stages = await listDecisionStages(postId);
 
-        expect(stages).toEqual(["TWEET_RECEIVED"]);
+        expect(stages).toContain("TWEET_RECEIVED");
+        expect(stages).not.toContain("LINKS_ENRICHED");
     });
 
     it("should discard with reason invalid_signature when the webhook signature is wrong", async () => {
