@@ -42,6 +42,9 @@ export type HorizonSource = (typeof HorizonSource)[keyof typeof HorizonSource];
 export const SELECTION_MAX_ITERATIONS = config.trading.selectionMaxIterations;
 export const SELECTION_MAX_TOOL_CALLS = config.trading.selectionMaxToolCalls;
 
+/** rulesPrimary longer than this is cut in the candidate table and flagged `rulesTruncated`. */
+export const RULES_PRIMARY_PROMPT_MAX_CHARS = 600;
+
 /**
  * Phase A (tool-calling loop) system prompt for the selection agent. Verbatim
  * from `docs/backend/tradeDecision.md` §"Phase A - selection prompt".
@@ -76,9 +79,9 @@ loss net of fees.
 
 ## How to read the candidates
 
-Each candidate carries its title, its settlement question, close time, the
-quoted YES ask and NO ask, the spread, top-of-book size, and the fee per
-contract at the current ask. Those numbers are computed for you and are
+Each candidate carries its title, its settlement rules (rulesPrimary, cut short
+when rulesTruncated is true), close time, the quoted YES ask and NO ask, the
+spread, top-of-book size, and the fee per contract at the current ask. Those numbers are computed for you and are
 correct - Kalshi publishes only bids, and the asks you see are already derived.
 Do not recompute them, and do not reason about a price you were not given.
 
@@ -89,8 +92,10 @@ automatically bearish for anything.
 
 ## Rules govern, headlines do not
 
-A market's title is a summary; rules_primary is the contract. Before proposing
-any market, call get_market_rules and confirm three things:
+A market's title is a summary; rulesPrimary is the contract. It is inlined in
+the candidate table. Call get_market_rules only when rulesTruncated is true or
+rules_secondary could change the answer. Before proposing any market, confirm
+three things from the rules:
 
 - the event it settles on is the one this post actually moves;
 - the resolution window contains the event the post implies - a tariff

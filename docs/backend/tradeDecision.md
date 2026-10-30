@@ -215,9 +215,9 @@ loss net of fees.
 
 ## How to read the candidates
 
-Each candidate carries its title, its settlement question, close time, the
-quoted YES ask and NO ask, the spread, top-of-book size, and the fee per
-contract at the current ask. Those numbers are computed for you and are
+Each candidate carries its title, its settlement rules (rulesPrimary, cut short
+when rulesTruncated is true), close time, the quoted YES ask and NO ask, the
+spread, top-of-book size, and the fee per contract at the current ask. Those numbers are computed for you and are
 correct - Kalshi publishes only bids, and the asks you see are already derived.
 Do not recompute them, and do not reason about a price you were not given.
 
@@ -228,8 +228,10 @@ automatically bearish for anything.
 
 ## Rules govern, headlines do not
 
-A market's title is a summary; rules_primary is the contract. Before proposing
-any market, call get_market_rules and confirm three things:
+A market's title is a summary; rulesPrimary is the contract. It is inlined in
+the candidate table. Call get_market_rules only when rulesTruncated is true or
+rules_secondary could change the answer. Before proposing any market, confirm
+three things from the rules:
 
 - the event it settles on is the one this post actually moves;
 - the resolution window contains the event the post implies - a tariff
@@ -290,7 +292,8 @@ sources read: {urls}
 
 <candidate_markets>
 {JSON array, ranked by liquidity, max 10. Per market:
-   ticker, seriesTicker, title, yesSubTitle, closeTime,
+   ticker, seriesTicker, title, yesSubTitle,
+   rulesPrimary (cut at RULES_PRIMARY_PROMPT_MAX_CHARS), rulesTruncated, closeTime,
    yesAsk, noAsk, spreadCents, topOfBookContracts, volume24h,
    feePerContractAtAsk, moveSinceSignalCents}
 </candidate_markets>
@@ -303,6 +306,10 @@ Proposals outside these are rejected downstream - do not propose them.
 Decide. If none of these markets settles on what this post actually moves, say
 NO_TRADE and say which rule failed.
 ```
+
+`rulesPrimary` is inlined because, without it, the model tended to skip
+`get_market_rules` entirely and decide on titles alone. Inlining also saves a
+round-trip inside the latency window.
 
 The risk envelope is included so the model does not spend a proposal on
 something guaranteed to be vetoed. It is a hint, not the enforcement — gate 4

@@ -8,6 +8,7 @@ import { anthropicClient } from "../agent/anthropicClient.service";
 import { executeRegistryTool, toAnthropicTools } from "../agent/agent.tools";
 import {
     PROPOSAL_SYSTEM_PROMPT,
+    RULES_PRIMARY_PROMPT_MAX_CHARS,
     SELECTION_MAX_ITERATIONS,
     SELECTION_MAX_TOOL_CALLS,
     SELECTION_SYSTEM_PROMPT
@@ -115,6 +116,18 @@ async function extractProposal(transcript: Anthropic.MessageParam[]): Promise<Tr
     return response.parsed_output;
 }
 
+/**
+ * Inlines the settlement question so the model can match rules without a
+ * get_market_rules round-trip per candidate; long rules are cut and flagged
+ * so the model knows to fetch the full text.
+ */
+function truncateRules(rulesPrimary: string): { rulesPrimary: string; rulesTruncated: boolean } {
+    if (rulesPrimary.length <= RULES_PRIMARY_PROMPT_MAX_CHARS) {
+        return { rulesPrimary, rulesTruncated: false };
+    }
+    return { rulesPrimary: rulesPrimary.slice(0, RULES_PRIMARY_PROMPT_MAX_CHARS), rulesTruncated: true };
+}
+
 function buildUserPrompt(input: TradeDecisionInput, candidates: CandidateQuote[]): string {
     const { post, handle, classification } = input;
     const elapsedSeconds = Math.max(0, Math.round((Date.now() - new Date(post.receivedAt).getTime()) / 1000));
@@ -124,6 +137,7 @@ function buildUserPrompt(input: TradeDecisionInput, candidates: CandidateQuote[]
         seriesTicker: candidate.seriesTicker,
         title: candidate.title,
         yesSubTitle: candidate.yesSubTitle,
+        ...truncateRules(candidate.rulesPrimary),
         closeTime: candidate.closeTime,
         yesAsk: candidate.yesAsk,
         noAsk: candidate.noAsk,
