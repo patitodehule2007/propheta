@@ -2,12 +2,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 import { config } from "../../config";
+import { getRecentClassificationsByHandle } from "../../repositories/postgres/trading.repository";
 import { logger } from "../../shared/services/logger";
 import { AGENT_MAX_TOKENS, AGENT_MODEL, WEB_FETCH_TOOL } from "../agent/agent.constants";
 import { anthropicClient } from "../agent/anthropicClient.service";
 import { executeRegistryTool, toAnthropicTools } from "../agent/agent.tools";
+import { loadTopicWorldContext, sanitizePromptText } from "../worldContext";
 import {
+    AUTHOR_RECENT_POST_MAX_CHARS,
+    AUTHOR_RECENT_POSTS_IN_PROMPT,
     PROPOSAL_SYSTEM_PROMPT,
+    RECENT_POSTS_WINDOW_DAYS,
     RULES_PRIMARY_PROMPT_MAX_CHARS,
     SELECTION_MAX_ITERATIONS,
     SELECTION_MAX_TOOL_CALLS,
@@ -18,6 +23,14 @@ import { CandidateQuote, TradeDecisionInput } from "./trading.types";
 
 export type SelectionResult =
     { ok: true; proposal: TradeProposalModelOutput; toolCallCount: number; stopReason: string } | { ok: false };
+
+/** Background blocks rendered ahead of the post; each is empty when there is nothing to show. */
+interface PromptContext {
+    worldContext: string;
+    authorRecentPosts: string;
+}
+
+const MS_PER_DAY = 86_400_000;
 
 interface ToolLoopResult {
     messages: Anthropic.MessageParam[];
@@ -36,7 +49,11 @@ export async function runSelectionAgent(
     candidates: CandidateQuote[]
 ): Promise<SelectionResult> {
     try {
-        const loopResult = await runToolLoop(buildUserPrompt(input, candidates));
+        const [worldContext, authorRecentPosts] = await Promise.all([
+            loadTopicWorldContext(input.classification.topic),
+            loadAuthorRecentPosts(input)
+        ]);
+        const loopResult = await runToolLoop(buildUserPrompt(input, candidates, { worldContext, authorRecentPosts }));
         const proposal = await extractProposal(loopResult.messages);
         return { ok: true, proposal, toolCallCount: loopResult.toolCallCount, stopReason: loopResult.stopReason };
     } catch (err) {
@@ -128,7 +145,40 @@ function truncateRules(rulesPrimary: string): { rulesPrimary: string; rulesTrunc
     return { rulesPrimary: rulesPrimary.slice(0, RULES_PRIMARY_PROMPT_MAX_CHARS), rulesTruncated: true };
 }
 
-function buildUserPrompt(input: TradeDecisionInput, candidates: CandidateQuote[]): string {
+/**
+ * The author's earlier posts on the same topic, so the model can tell an
+ * escalation or a reversal from a repeat. Degrades to nothing on a failed
+ * read: it is background, not a precondition.
+ */
+async function loadAuthorRecentPosts(input: TradeDecisionInput): Promise<string> {
+    try {
+        const since = new Date(Date.now() - RECENT_POSTS_WINDOW_DAYS * MS_PER_DAY).toISOString();
+        const recent = await getRecentClassificationsByHandle({
+            handle: input.handle,
+            topic: input.classification.topic,
+            since,
+            // One extra row, since the current post may be among the results.
+            limit: AUTHOR_RECENT_POSTS_IN_PROMPT + 1
+        });
+        const earlier = recent
+            .filter((entry) => entry.platformPostId !== input.post.platformPostId)
+            .slice(0, AUTHOR_RECENT_POSTS_IN_PROMPT);
+        if (earlier.length === 0) {
+            return "";
+        }
+        const entries = earlier.map(
+            (entry) =>
+                `<recent_post posted_at="${entry.createdAt}" direction="${entry.direction}">\n` +
+                `${sanitizePromptText(entry.rawText).slice(0, AUTHOR_RECENT_POST_MAX_CHARS)}\n</recent_post>`
+        );
+        return ["<author_recent_posts>", ...entries, "</author_recent_posts>"].join("\n");
+    } catch (err) {
+        logger.warn({ err, platformPostId: input.post.platformPostId }, "Recent posts read failed, continuing without");
+        return "";
+    }
+}
+
+function buildUserPrompt(input: TradeDecisionInput, candidates: CandidateQuote[], context: PromptContext): string {
     const { post, handle, classification } = input;
     const elapsedSeconds = Math.max(0, Math.round((Date.now() - new Date(post.receivedAt).getTime()) / 1000));
 
@@ -148,7 +198,13 @@ function buildUserPrompt(input: TradeDecisionInput, candidates: CandidateQuote[]
         moveSinceSignalCents: candidate.moveSinceSignalCents
     }));
 
+    // Background first, the post after it: the post is what is being judged.
+    const contextLines = [context.worldContext, context.authorRecentPosts].flatMap((block) =>
+        block ? [block, ""] : []
+    );
+
     return [
+        ...contextLines,
         "A monitored account just posted. The classification stage has already run.",
         "",
         `<post author="@${handle}" posted_at="${post.receivedAt}" elapsed_seconds="${elapsedSeconds}">`,

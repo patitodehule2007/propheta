@@ -6,6 +6,7 @@ import {
     buildClassification,
     buildInvalidTradeProposal,
     buildTradeProposal,
+    buildWorldBrief,
     extractOverrides,
     extractSelectionOverrides,
     FIXTURES,
@@ -37,6 +38,12 @@ app.get("/fixtures/:name", (req: Request, res: Response) => {
 
 const URL_REGEX = /https?:\/\/[^\s<]+/;
 const TICKER_REGEX = /"ticker":"([^"]+)"/g;
+// The post itself, in the classifier's (`<post_text>`) or the selection
+// agent's (`<post author=...>`) prompt. Markers are read only from here: the
+// prompts also carry world briefs and the author's earlier posts, whose own
+// markers must not leak into this post's script.
+const POST_BLOCK_REGEX = /<post_text>([\s\S]*?)<\/post_text>|<post author[^>]*>([\s\S]*?)<\/post>/;
+const WORLD_BRIEF_TOPIC_REGEX = /Topic: ([A-Z_]+)/;
 
 interface MockMessage {
     role: string;
@@ -58,6 +65,17 @@ function isSelectionStage(system: unknown): boolean {
     );
 }
 
+/** `worldBrief.service.ts`'s research and extraction prompts. */
+function isWorldBriefStage(system: unknown): boolean {
+    return typeof system === "string" && system.includes("world-brief stage of Propheta");
+}
+
+/** The post's own text, or the whole prompt when it carries no post block. */
+function extractPostText(prompt: string): string {
+    const match = prompt.match(POST_BLOCK_REGEX);
+    return match ? (match[1] ?? match[2] ?? prompt) : prompt;
+}
+
 /** Candidate tickers appear as `"ticker":"..."` in the JSON candidate table. */
 function extractCandidateTickers(text: string): string[] {
     return Array.from(text.matchAll(TICKER_REGEX), (match) => match[1]);
@@ -68,13 +86,23 @@ app.post("/v1/messages", (req: Request, res: Response) => {
     const model = body.model ?? "claude-sonnet-5";
     const messages = body.messages ?? [];
     const firstUserContent = String(messages[0]?.content ?? "");
-    const urlMatch = firstUserContent.match(URL_REGEX);
+    const postText = extractPostText(firstUserContent);
+    const urlMatch = postText.match(URL_REGEX);
     const selectionStage = isSelectionStage(body.system);
+
+    if (isWorldBriefStage(body.system)) {
+        const topic = firstUserContent.match(WORLD_BRIEF_TOPIC_REGEX)?.[1] ?? "UNKNOWN";
+        const text = body.output_config
+            ? JSON.stringify(buildWorldBrief(topic))
+            : "I searched recent reporting on the topic.";
+        res.status(200).json(textResponse(model, text, "end_turn"));
+        return;
+    }
 
     if (body.output_config) {
         // Phase B: the no-tools structured extraction call.
         if (selectionStage) {
-            const overrides = extractSelectionOverrides(firstUserContent);
+            const overrides = extractSelectionOverrides(postText);
             const proposal =
                 overrides.mode === SelectionMode.INVALID
                     ? buildInvalidTradeProposal()
@@ -82,7 +110,7 @@ app.post("/v1/messages", (req: Request, res: Response) => {
             res.status(200).json(textResponse(model, JSON.stringify(proposal), "end_turn"));
             return;
         }
-        const classification = buildClassification(urlMatch ? [urlMatch[0]] : [], extractOverrides(firstUserContent));
+        const classification = buildClassification(urlMatch ? [urlMatch[0]] : [], extractOverrides(postText));
         res.status(200).json(textResponse(model, JSON.stringify(classification), "end_turn"));
         return;
     }
@@ -92,7 +120,7 @@ app.post("/v1/messages", (req: Request, res: Response) => {
 
     if (selectionStage) {
         const ticker =
-            extractSelectionOverrides(firstUserContent).ticker ?? extractCandidateTickers(firstUserContent)[0];
+            extractSelectionOverrides(postText).ticker ?? extractCandidateTickers(firstUserContent)[0];
         if (assistantTurns === 0 && ticker) {
             res.status(200).json(
                 toolUseResponse(model, "get_market_rules", { ticker }, "Checking the settlement rules.")

@@ -254,12 +254,21 @@ any exception from the loop or Phase B — an API error, a schema mismatch,
 etc. — metadata is null there; diagnostics go to the logger, not to a
 client-facing table.
 
+## World context
+
+Before Phase A, `runPostAnalysis` reads every topic's live world brief and
+renders it as a `<world_context>` block ahead of the post in the first user
+message (`docs/backend/worldContext.md`). `AGENT_SYSTEM_PROMPT` and
+`CLASSIFICATION_SYSTEM_PROMPT` tell the model to use it as background for
+novelty and direction, that the post overrides it, and not to call tools to
+verify it. A failed brief read degrades to no block.
+
 ## Prompt injection posture
 
 Scraped page content is attacker-controlled (it comes from whatever the post
 links to) and enters the model's context. `AGENT_SYSTEM_PROMPT`
-(`agent.constants.ts`) explicitly fences tool output as untrusted data, not
-instructions. `parse_url` keeps its own SSRF check regardless of what
+(`agent.constants.ts`) explicitly fences tool output, and the world briefs, as
+untrusted data, not instructions. `parse_url` keeps its own SSRF check regardless of what
 upstream filtering already happened. `web_fetch` is capped with `max_uses`.
 None of this is a hard guarantee — it's the same posture the project takes
 for scraped content generally (`docs/backend/decisionPipeline.md`).

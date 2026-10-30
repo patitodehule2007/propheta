@@ -119,6 +119,12 @@ export const config = {
         ttlSeconds: Number(getEnv("SCRAPE_CACHE_TTL_SECONDS") ?? 21_600),
         negativeTtlSeconds: Number(getEnv("SCRAPE_CACHE_NEGATIVE_TTL_SECONDS") ?? 900)
     },
+    // Manually curated world briefs (docs/backend/worldContext.md).
+    worldContext: {
+        webSearchMaxUses: Number(getEnv("WORLD_BRIEF_WEB_SEARCH_MAX_USES") ?? 5),
+        maxBodyChars: Number(getEnv("WORLD_BRIEF_MAX_CHARS") ?? 3000),
+        staleAfterHours: Number(getEnv("WORLD_BRIEF_STALE_AFTER_HOURS") ?? 72)
+    },
     dryRun: (getEnv("DRY_RUN") ?? "true") === "true",
     trading: {
         // --- Gates (docs/backend/tradeDecision.md §6.3 + Config) -------------

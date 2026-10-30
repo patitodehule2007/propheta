@@ -6,6 +6,7 @@ import { DecisionOutcome, DecisionStage, DiscardReason } from "../../shared/core
 import { logger } from "../../shared/services/logger";
 import { insertDecisionLog } from "../../repositories/postgres/ingestion.repository";
 import { extractUrls } from "../scraping/scrape.service";
+import { loadAllTopicsWorldContext } from "../worldContext";
 import { executeRegistryTool, toAnthropicTools } from "./agent.tools";
 import {
     AGENT_MAX_TOKENS,
@@ -53,7 +54,8 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
     }
 
     try {
-        const loopResult = await runToolLoop(post.text);
+        const worldContext = await loadAllTopicsWorldContext();
+        const loopResult = await runToolLoop(buildUserPrompt(post.text, worldContext));
         const classification = await extractClassification(loopResult.messages);
 
         await insertDecisionLog({
@@ -91,9 +93,9 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
  * `web_fetch` pausing a long turn) is resumed by re-sending, per the
  * documented manual-loop pattern.
  */
-async function runToolLoop(postText: string): Promise<ToolLoopResult> {
+async function runToolLoop(userPrompt: string): Promise<ToolLoopResult> {
     const tools: Anthropic.Messages.ToolUnion[] = [...toAnthropicTools(), WEB_FETCH_TOOL];
-    let messages: Anthropic.MessageParam[] = [{ role: "user", content: buildUserPrompt(postText) }];
+    let messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
     let toolCallCount = 0;
 
     for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
@@ -178,12 +180,17 @@ async function extractClassification(transcript: Anthropic.MessageParam[]): Prom
     return response.parsed_output;
 }
 
-function buildUserPrompt(postText: string): string {
+function buildUserPrompt(postText: string, worldContext: string): string {
     const urls = extractUrls(postText);
     const linksLine =
         urls.length > 0 ? `Links found in the post text: ${urls.join(", ")}` : "No links found in the post text.";
 
+    // Background first, the post last: the post is what is being judged and
+    // overrides anything the briefs say.
+    const contextLines = worldContext ? [worldContext, ""] : [];
+
     return [
+        ...contextLines,
         "A new post from a monitored political account needs to be analyzed.",
         "",
         "<post_text>",

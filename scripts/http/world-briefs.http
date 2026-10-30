@@ -1,0 +1,28 @@
+### World briefs — all routes require a session (run auth.http login first).
+# Briefs are background for the classifier and selection prompts. Nothing
+# refreshes them on a schedule: PUT one you wrote (e.g. drafted in a Claude
+# chat with web search), or POST .../generate to have the backend research it.
+# With the manual LLM relay running, generate lands in the relay queue.
+
+@topic = INTERNATIONAL_CONFLICT
+@pageSize = 20
+
+### Live brief for every topic that has one
+GET {{baseUrl}}/world-briefs
+
+### Version history for one topic (offset pagination, newest first)
+GET {{baseUrl}}/world-briefs/{{topic}}/history?limit={{pageSize}}&offset=0
+
+### Save a brief you wrote as the topic's new live version
+# asOf (optional, defaults to now, never in the future) is when the facts were
+# current; the prompt flags the brief stale after WORLD_BRIEF_STALE_AFTER_HOURS.
+PUT {{baseUrl}}/world-briefs/{{topic}}
+Content-Type: application/json
+
+{
+    "body": "Replace with the current state of play: who is doing what, what was threatened, paused or agreed (with absolute dates), pending deadlines and scheduled talks.",
+    "sourceUrls": []
+}
+
+### Research the topic with web search and save the result (synchronous)
+POST {{baseUrl}}/world-briefs/{{topic}}/generate

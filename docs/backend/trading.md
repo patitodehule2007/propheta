@@ -18,13 +18,13 @@ The boundary the whole module is built on: **the model chooses which market
 | `trading.constants.ts` | — | statuses, `RECENT_POSTS_WINDOW_DAYS`, the two selection-agent prompts |
 | `trading.schema.ts` | — | `tradeProposalSchema` (zod) — the selection agent's structured output |
 | `trading.types.ts` | — | `TradeDecisionInput`, `CandidateQuote` — cross-gate shapes |
-| `pricing.ts` | — | derives YES/NO ask from a bids-only book; per-contract fee arithmetic |
+| `pricing.ts` | — | derives YES/NO ask from a bids-only book; per-contract fee arithmetic; gate 4's conviction-shrunk edge (`computeEdge`) |
 | `quote.service.ts` | — | `getLiveOrCachedQuote` — Redis quote cache with a live-fetch fallback |
 | `marketCache.service.ts` | — | refreshes `kalshi_series` / `kalshi_markets` for every whitelisted series (`topic_market_series`) |
 | `quotePoller.service.ts` | — | REST-polls order books for every cached open ticker in a whitelisted series into the Redis quote cache |
 | `preGate.service.ts` | 1 | topic/direction/confidence/novelty/kill-switch/order-rate, zero tokens |
 | `candidates.service.ts` | 2 | topic → cached open markets, enriched with derived quotes |
-| `selectionAgent.service.ts` | 3 | the only LLM call — two-phase, tighter budget than the classifier |
+| `selectionAgent.service.ts` | 3 | the only LLM call — two-phase, tighter budget than the classifier; prompt carries the topic's world brief and the author's earlier same-topic posts |
 | `riskGate.service.ts` | 4 | whitelist, recomputed edge, §6.3 limits, sizing |
 | `exitPolicy.service.ts` | 4 | ATR estimator, geometric horizon blend, stop, gain top (pure functions) |
 | `execution.service.ts` | 5 | mints `client_order_id`, persists order + position, `DRY_RUN` branch |

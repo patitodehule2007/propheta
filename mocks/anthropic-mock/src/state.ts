@@ -157,3 +157,11 @@ export function buildTradeProposal(
 export function buildInvalidTradeProposal(): Record<string, unknown> {
     return { action: "BUY", reasoning: "" };
 }
+
+/** Phase B output of a generated world brief. */
+export function buildWorldBrief(topic: string): Record<string, unknown> {
+    return {
+        body: `Mock world brief for ${topic}: talks continue and no new measures are scheduled.`,
+        sourceUrls: ["https://example.com/mock-world-brief"]
+    };
+}
