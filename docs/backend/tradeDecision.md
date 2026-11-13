@@ -123,8 +123,13 @@ fragile combination.
 
 - **Phase A** — tool loop, no structured output. Reads settlement rules,
   checks whether the market already moved.
-- **Phase B** — one no-tools `messages.parse()` over the transcript with
-  `output_config: { format: zodOutputFormat(tradeProposalSchema) }`.
+- **Phase B** — one `messages.parse()` over the transcript with
+  `output_config: { format: zodOutputFormat(tradeProposalSchema) }`, via the
+  shared `extractStructured()` helper. Append-only: it sends Phase A's
+  `SELECTION_SYSTEM_PROMPT` and `tools` unchanged, with `tool_choice: none`, and
+  the prompt below as the final user message. Changing the system prompt or the
+  tools breaks the transcript's thinking-block signatures; see
+  `docs/backend/agent.md` §"Phase B is append-only".
 
 Budgets are **tighter than the classification loop's** (`SELECTION_MAX_ITERATIONS`
 2–3 vs. the classifier's 6): rules-reading is one or two calls, and anything
@@ -382,9 +387,12 @@ re-checks all of it regardless of what the model was told.
 
 ## Phase B — proposal prompt and schema
 
+`PROPOSAL_INSTRUCTIONS`, sent as the final **user** message. The system prompt
+stays `SELECTION_SYSTEM_PROMPT`.
+
 ```
-You are the proposal stage of Propheta. Given the investigation above, produce
-exactly one structured trade proposal.
+The investigation is complete. Based on it, produce exactly one structured trade
+proposal now. Do not call any more tools.
 
 - action is BUY when a candidate's rules settle on what this post moves AND your
   fairProbability is on the favorable side of that side's ask (for YES,

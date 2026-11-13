@@ -54,18 +54,15 @@ interface MockMessage {
  * `agent.service.ts` (classification) and `selectionAgent.service.ts` (gate 3)
  * both call `/v1/messages` with the same shape; only the `system` prompt text
  * tells them apart, since this mock is stateless and derives everything from
- * the request body. Gate 3's Phase A (`SELECTION_SYSTEM_PROMPT`) and Phase B
- * (`PROPOSAL_SYSTEM_PROMPT`) are two different strings, so both markers are
- * checked.
+ * the request body. Both of gate 3's phases send `SELECTION_SYSTEM_PROMPT`
+ * (Phase B only adds `output_config` and a final user message), so one marker
+ * covers both.
  */
 function isSelectionStage(system: unknown): boolean {
-    return (
-        typeof system === "string" &&
-        (system.includes("market-selection stage") || system.includes("proposal stage of Propheta"))
-    );
+    return typeof system === "string" && system.includes("market-selection stage");
 }
 
-/** `worldBrief.service.ts`'s research and extraction prompts. */
+/** `worldBrief.service.ts`'s research and extraction calls (both send `WORLD_BRIEF_SYSTEM_PROMPT`). */
 function isWorldBriefStage(system: unknown): boolean {
     return typeof system === "string" && system.includes("world-brief stage of Propheta");
 }
@@ -100,7 +97,7 @@ app.post("/v1/messages", (req: Request, res: Response) => {
     }
 
     if (body.output_config) {
-        // Phase B: the no-tools structured extraction call.
+        // Phase B: the structured extraction call (tools sent, `tool_choice: none`).
         if (selectionStage) {
             const overrides = extractSelectionOverrides(postText);
             const proposal =

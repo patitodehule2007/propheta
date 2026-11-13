@@ -157,12 +157,13 @@ When you have enough to decide, stop calling tools and summarize what you
 found. A separate step will ask you for the structured proposal.`;
 
 /**
- * Phase B (structured extraction, no tools) system prompt for the selection
- * agent. Verbatim from `docs/backend/tradeDecision.md` §"Phase B - proposal
- * prompt and schema".
+ * Phase B (structured extraction) instructions for the selection agent, sent as
+ * the final user message over the unchanged Phase A system prompt, tools and
+ * transcript (see `agent/structuredExtraction.service.ts`). Verbatim from
+ * `docs/backend/tradeDecision.md` §"Phase B - proposal prompt and schema".
  */
-export const PROPOSAL_SYSTEM_PROMPT = `You are the proposal stage of Propheta. Given the investigation above, produce
-exactly one structured trade proposal.
+export const PROPOSAL_INSTRUCTIONS = `The investigation is complete. Based on it, produce exactly one structured trade
+proposal now. Do not call any more tools.
 
 - action is BUY when a candidate's rules settle on what this post moves AND your
   fairProbability is on the favorable side of that side's ask (for YES,

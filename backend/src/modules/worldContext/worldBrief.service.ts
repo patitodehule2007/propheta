@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 import { config } from "../../config";
 import { insertWorldBrief, WorldBrief } from "../../repositories/postgres/worldBrief.repository";
@@ -7,9 +6,10 @@ import { ExternalServiceError, ValidationError } from "../../shared/core/errors"
 import { logger } from "../../shared/services/logger";
 import { AGENT_MAX_TOKENS, AGENT_MODEL, MAX_AGENT_ITERATIONS } from "../agent/agent.constants";
 import { anthropicClient } from "../agent/anthropicClient.service";
+import { extractStructured } from "../agent/structuredExtraction.service";
 import {
     BriefableTopic,
-    WORLD_BRIEF_EXTRACTION_PROMPT,
+    WORLD_BRIEF_EXTRACTION_INSTRUCTIONS,
     WORLD_BRIEF_MAX_CHARS,
     WORLD_BRIEF_MAX_SOURCE_URLS,
     WORLD_BRIEF_SYSTEM_PROMPT,
@@ -18,6 +18,9 @@ import {
 } from "./worldBrief.constants";
 import { GeneratedWorldBrief, generatedWorldBriefSchema, ManualWorldBriefInput } from "./worldBrief.schema";
 import { sanitizePromptText } from "./worldContext.prompt";
+
+/** Shared by both phases: Phase B must send the exact tools Phase A ran with. */
+const WORLD_BRIEF_TOOLS: Anthropic.Messages.ToolUnion[] = [WORLD_BRIEF_WEB_SEARCH_TOOL];
 
 /**
  * Stores a brief written by the operator as a new MANUAL version.
@@ -68,7 +71,13 @@ export async function generateBrief(topic: BriefableTopic): Promise<WorldBrief> 
 async function researchAndExtract(topic: BriefableTopic): Promise<GeneratedWorldBrief> {
     try {
         const transcript = await runResearch(topic);
-        return await extractBrief(transcript);
+        return await extractStructured({
+            system: WORLD_BRIEF_SYSTEM_PROMPT,
+            tools: WORLD_BRIEF_TOOLS,
+            transcript,
+            instructions: WORLD_BRIEF_EXTRACTION_INSTRUCTIONS,
+            schema: generatedWorldBriefSchema
+        });
     } catch (err) {
         logger.error({ err, topic }, "World brief generation failed");
         throw new ExternalServiceError("Brief generation failed");
@@ -90,7 +99,7 @@ async function runResearch(topic: BriefableTopic): Promise<Anthropic.MessagePara
             model: AGENT_MODEL,
             max_tokens: AGENT_MAX_TOKENS,
             system: WORLD_BRIEF_SYSTEM_PROMPT,
-            tools: [WORLD_BRIEF_WEB_SEARCH_TOOL],
+            tools: WORLD_BRIEF_TOOLS,
             messages
         });
         messages = [...messages, { role: "assistant", content: response.content }];
@@ -99,21 +108,6 @@ async function runResearch(topic: BriefableTopic): Promise<Anthropic.MessagePara
         }
     }
     return messages;
-}
-
-/** Phase B: one no-tools structured extraction over the research transcript. */
-async function extractBrief(transcript: Anthropic.MessageParam[]): Promise<GeneratedWorldBrief> {
-    const response = await anthropicClient.messages.parse({
-        model: AGENT_MODEL,
-        max_tokens: AGENT_MAX_TOKENS,
-        system: WORLD_BRIEF_EXTRACTION_PROMPT,
-        messages: [...transcript, { role: "user", content: "Write the final brief now." }],
-        output_config: { format: zodOutputFormat(generatedWorldBriefSchema) }
-    });
-    if (!response.parsed_output) {
-        throw new Error("World brief response did not parse against the expected schema");
-    }
-    return response.parsed_output;
 }
 
 function isHttpUrl(value: string): boolean {

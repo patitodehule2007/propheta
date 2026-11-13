@@ -25,7 +25,12 @@ const TOOL_REPLY_INSTRUCTIONS = [
     "has returned them in this conversation."
 ].join("\n");
 
-/** True for the no-tools structured-extraction calls (`messages.parse` with `output_config`). */
+/**
+ * True for the structured-extraction calls (`messages.parse` with `output_config`).
+ * They still carry Phase A's tools (with `tool_choice: none`) so the thinking
+ * blocks in the transcript stay valid, but no tool may be called, so the
+ * rendered prompt omits them.
+ */
 export function isStructuredRequest(request: MessagesRequest): boolean {
     return request.output_config !== undefined;
 }

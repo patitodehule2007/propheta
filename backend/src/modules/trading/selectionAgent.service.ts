@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 import { config } from "../../config";
 import { getRecentClassificationsByHandle } from "../../repositories/postgres/trading.repository";
@@ -7,11 +6,12 @@ import { logger } from "../../shared/services/logger";
 import { AGENT_MAX_TOKENS, AGENT_MODEL, WEB_FETCH_TOOL } from "../agent/agent.constants";
 import { anthropicClient } from "../agent/anthropicClient.service";
 import { executeRegistryTool, toAnthropicTools } from "../agent/agent.tools";
+import { extractStructured } from "../agent/structuredExtraction.service";
 import { loadTopicWorldContext, sanitizePromptText } from "../worldContext";
 import {
     AUTHOR_RECENT_POST_MAX_CHARS,
     AUTHOR_RECENT_POSTS_IN_PROMPT,
-    PROPOSAL_SYSTEM_PROMPT,
+    PROPOSAL_INSTRUCTIONS,
     RECENT_POSTS_WINDOW_DAYS,
     RULES_PRIMARY_PROMPT_MAX_CHARS,
     SELECTION_MAX_ITERATIONS,
@@ -53,8 +53,17 @@ export async function runSelectionAgent(
             loadTopicWorldContext(input.classification.topic),
             loadAuthorRecentPosts(input)
         ]);
-        const loopResult = await runToolLoop(buildUserPrompt(input, candidates, { worldContext, authorRecentPosts }));
-        const proposal = await extractProposal(loopResult.messages);
+        // Built once: Phase B must send the exact tools Phase A ran with.
+        const tools: Anthropic.Messages.ToolUnion[] = [...toAnthropicTools(), WEB_FETCH_TOOL];
+        const userPrompt = buildUserPrompt(input, candidates, { worldContext, authorRecentPosts });
+        const loopResult = await runToolLoop(userPrompt, tools);
+        const proposal = await extractStructured({
+            system: SELECTION_SYSTEM_PROMPT,
+            tools,
+            transcript: loopResult.messages,
+            instructions: PROPOSAL_INSTRUCTIONS,
+            schema: tradeProposalSchema
+        });
         return { ok: true, proposal, toolCallCount: loopResult.toolCallCount, stopReason: loopResult.stopReason };
     } catch (err) {
         logger.error({ err, platformPostId: input.post.platformPostId }, "Selection agent failed");
@@ -62,8 +71,7 @@ export async function runSelectionAgent(
     }
 }
 
-async function runToolLoop(userPrompt: string): Promise<ToolLoopResult> {
-    const tools: Anthropic.Messages.ToolUnion[] = [...toAnthropicTools(), WEB_FETCH_TOOL];
+async function runToolLoop(userPrompt: string, tools: Anthropic.Messages.ToolUnion[]): Promise<ToolLoopResult> {
     let messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
     let toolCallCount = 0;
 
@@ -116,21 +124,6 @@ async function runToolLoop(userPrompt: string): Promise<ToolLoopResult> {
     }
 
     return { messages, stopReason: "max_iterations", toolCallCount };
-}
-
-async function extractProposal(transcript: Anthropic.MessageParam[]): Promise<TradeProposalModelOutput> {
-    const response = await anthropicClient.messages.parse({
-        model: AGENT_MODEL,
-        max_tokens: AGENT_MAX_TOKENS,
-        system: PROPOSAL_SYSTEM_PROMPT,
-        messages: [...transcript, { role: "user", content: "Produce the structured trade proposal now." }],
-        output_config: { format: zodOutputFormat(tradeProposalSchema) }
-    });
-
-    if (!response.parsed_output) {
-        throw new Error("Trade proposal response did not parse against the expected schema");
-    }
-    return response.parsed_output;
 }
 
 /**

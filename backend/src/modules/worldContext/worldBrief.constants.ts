@@ -53,10 +53,12 @@ When you have enough, stop searching and summarize what you found. A later
 step will ask you for the final brief.`;
 
 /**
- * Phase B (structured extraction, no tools) system prompt for brief generation.
+ * Phase B (structured extraction) instructions for brief generation, sent as the
+ * final user message over the unchanged Phase A system prompt, tools and
+ * transcript (see `agent/structuredExtraction.service.ts`).
  */
-export const WORLD_BRIEF_EXTRACTION_PROMPT = `You are the world-brief stage of Propheta. From the research above, write the
-final brief.
+export const WORLD_BRIEF_EXTRACTION_INSTRUCTIONS = `The research is complete. From it, write the final brief now. Do not search
+again.
 
 - body is plain prose, at most ${WORLD_BRIEF_MAX_CHARS} characters, dense and
   factual, with absolute dates (never "yesterday" or "last week"). No

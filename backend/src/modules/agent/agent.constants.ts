@@ -91,11 +91,13 @@ briefly summarize what you found. A later step will ask you for the final
 structured classification.`;
 
 /**
- * Phase B (structured extraction, no tools) system prompt.
+ * Phase B (structured extraction) instructions, sent as the final user message
+ * over the unchanged Phase A system prompt, tools and transcript — see
+ * `structuredExtraction.service.ts` for why it is not a system prompt.
  */
-export const CLASSIFICATION_SYSTEM_PROMPT = `You are the classification stage of Propheta. Given the investigation above
-(the original post and anything read from linked pages), produce a single
-structured classification.
+export const CLASSIFICATION_INSTRUCTIONS = `The investigation is complete. Based on it (the original post and anything
+read from linked pages), produce the final structured classification now. Do
+not call any more tools.
 
 Rules:
 - topic must be the closed taxonomy category the post most plausibly moves a

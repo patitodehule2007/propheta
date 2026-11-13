@@ -21,7 +21,9 @@ behind the API:
 - **Generate** (`POST /api/world-briefs/:topic/generate`): the backend runs a
   two-phase model call. Phase A is research with the server-side
   `web_search` tool; Phase B is a structured `{ body, sourceUrls }`
-  extraction. The result is stored. Synchronous: the response waits for the
+  extraction that continues the same conversation (same system prompt and
+  tools, `tool_choice: none`; see `docs/backend/agent.md` §"Phase B is
+  append-only"). The result is stored. Synchronous: the response waits for the
   model. With the manual LLM relay (`mocks/anthropic-manual-relay`) running,
   the request lands in the relay queue like any other model call.
 

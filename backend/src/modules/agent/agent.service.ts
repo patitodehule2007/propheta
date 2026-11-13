@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 
 import { config } from "../../config";
 import { DecisionOutcome, DecisionStage, DiscardReason } from "../../shared/core/decisionLog.constants";
@@ -12,13 +11,14 @@ import {
     AGENT_MAX_TOKENS,
     AGENT_MODEL,
     AGENT_SYSTEM_PROMPT,
-    CLASSIFICATION_SYSTEM_PROMPT,
+    CLASSIFICATION_INSTRUCTIONS,
     MAX_AGENT_ITERATIONS,
     MAX_TOOL_CALLS_PER_RUN,
     WEB_FETCH_TOOL
 } from "./agent.constants";
 import { postClassificationSchema, PostClassification } from "./agent.schema";
 import { anthropicClient } from "./anthropicClient.service";
+import { extractStructured } from "./structuredExtraction.service";
 
 export interface AgentPostInput {
     ingestedPostId: string;
@@ -55,8 +55,16 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
 
     try {
         const worldContext = await loadAllTopicsWorldContext();
-        const loopResult = await runToolLoop(buildUserPrompt(post.text, worldContext));
-        const classification = await extractClassification(loopResult.messages);
+        // Built once: Phase B must send the exact tools Phase A ran with.
+        const tools: Anthropic.Messages.ToolUnion[] = [...toAnthropicTools(), WEB_FETCH_TOOL];
+        const loopResult = await runToolLoop(buildUserPrompt(post.text, worldContext), tools);
+        const classification = await extractStructured({
+            system: AGENT_SYSTEM_PROMPT,
+            tools,
+            transcript: loopResult.messages,
+            instructions: CLASSIFICATION_INSTRUCTIONS,
+            schema: postClassificationSchema
+        });
 
         await insertDecisionLog({
             ingestedPostId: post.ingestedPostId,
@@ -93,8 +101,7 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
  * `web_fetch` pausing a long turn) is resumed by re-sending, per the
  * documented manual-loop pattern.
  */
-async function runToolLoop(userPrompt: string): Promise<ToolLoopResult> {
-    const tools: Anthropic.Messages.ToolUnion[] = [...toAnthropicTools(), WEB_FETCH_TOOL];
+async function runToolLoop(userPrompt: string, tools: Anthropic.Messages.ToolUnion[]): Promise<ToolLoopResult> {
     let messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
     let toolCallCount = 0;
 
@@ -156,28 +163,6 @@ async function runToolLoop(userPrompt: string): Promise<ToolLoopResult> {
     }
 
     return { messages, stopReason: "max_iterations", toolCallCount };
-}
-
-/**
- * Phase B: one no-tools call that asks for the final structured
- * classification over the Phase A transcript.
- */
-async function extractClassification(transcript: Anthropic.MessageParam[]): Promise<PostClassification> {
-    const response = await anthropicClient.messages.parse({
-        model: AGENT_MODEL,
-        max_tokens: AGENT_MAX_TOKENS,
-        system: CLASSIFICATION_SYSTEM_PROMPT,
-        messages: [
-            ...transcript,
-            { role: "user", content: "Based on the investigation above, produce the final classification now." }
-        ],
-        output_config: { format: zodOutputFormat(postClassificationSchema) }
-    });
-
-    if (!response.parsed_output) {
-        throw new Error("Classification response did not parse against the expected schema");
-    }
-    return response.parsed_output;
 }
 
 function buildUserPrompt(postText: string, worldContext: string): string {

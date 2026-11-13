@@ -31,7 +31,7 @@ throws and returns the classification on success or `null` on skip/failure —
 ## Two phases
 
 ```
-Phase A (tools on)          Phase B (no tools)
+Phase A (tools on)          Phase B (tool_choice: none)
 messages.create() loop  ──▶ messages.parse() + output_config.format
 search_tools / parse_url    → PostClassification (zod-validated)
 web_fetch (server tool)
@@ -43,9 +43,34 @@ return strict JSON is the fragile combination, and splitting means Phase B is
 one small, independently testable call over a transcript that is already in
 the prompt cache.
 
+### Phase B is append-only
+
+Phase B continues the Phase A conversation; it does not rewrite it. It sends
+the **same `system` prompt and the same `tools` array** as Phase A, the
+transcript unchanged, and adds the stage-specific instructions
+(`CLASSIFICATION_INSTRUCTIONS`) as one final user message, with
+`tool_choice: { type: "none" }` so the model answers instead of calling a
+tool.
+
+This is required, not stylistic. On models with preserved thinking (Claude
+Opus 5.5, Sonnet 5.5, Fable), each `thinking` block's signature is bound to
+the `system` prompt, the tool list and every earlier message. Replaying the
+transcript under a different `system` or without `tools` fails with
+`400 Invalid signature in thinking block. The block is bound to a different
+conversation`, and is enforced by default on accounts created on or after
+2026-08-31. Keeping the prefix intact also keeps the system and tools prompt
+cache warm for Phase B.
+
+The shared helper is `extractStructured()` in
+`modules/agent/structuredExtraction.service.ts`. All three two-phase callers
+use it: classification (here), the selection agent
+(`docs/backend/tradeDecision.md`) and world-brief generation
+(`docs/backend/worldContext.md`). Each caller builds its `tools` array once
+and passes the same array to both phases.
+
 `agent.service.ts`:
 
-- `runToolLoop(postText)` — the manual loop (not the SDK's tool runner: we
+- `runToolLoop(userPrompt, tools)` — the manual loop (not the SDK's tool runner: we
   need `defer_loading`, `tool_reference` results, and mixing a server tool
   with client tools under an explicit call budget). Stops on `end_turn`,
   resumes on `pause_turn` (a long server-tool turn), and gives up after
@@ -53,7 +78,8 @@ the prompt cache.
   default 10) — whichever is hit first still proceeds to Phase B with
   whatever transcript exists, tagged with `stopReason` in metadata, rather
   than discarding the run.
-- `extractClassification(transcript)` — one no-tools call with
+- `extractStructured({ system, tools, transcript, instructions, schema })`
+  (Phase B) — one call with
   `output_config: { format: zodOutputFormat(postClassificationSchema) }`
   (`agent.schema.ts`). `response.parsed_output` is validated client-side by
   the SDK against the zod schema; a schema mismatch throws and the run is
@@ -222,7 +248,7 @@ another's, and an angry tweet is not automatically bearish for anything.
 mentioned in the post), and `reasoning`.
 
 Two classifier rules exist because the defaults were too conservative on real
-posts (`CLASSIFICATION_SYSTEM_PROMPT`):
+posts (`CLASSIFICATION_INSTRUCTIONS`):
 
 - **Multi-measure posts** — the model picks the single measure most likely to
   move a tracked market and judges that measure's direction. A post that
@@ -259,7 +285,7 @@ client-facing table.
 Before Phase A, `runPostAnalysis` reads every topic's live world brief and
 renders it as a `<world_context>` block ahead of the post in the first user
 message (`docs/backend/worldContext.md`). `AGENT_SYSTEM_PROMPT` and
-`CLASSIFICATION_SYSTEM_PROMPT` tell the model to use it as background for
+`CLASSIFICATION_INSTRUCTIONS` tell the model to use it as background for
 novelty and direction, that the post overrides it, and not to call tools to
 verify it. A failed brief read degrades to no block.
 
