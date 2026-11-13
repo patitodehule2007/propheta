@@ -83,6 +83,17 @@ is too illiquid": the function is called once with no volume floor
 `TRADE_MIN_SERIES_VOLUME` applied (`no_liquid_market` if that one is empty
 instead).
 
+Ranking: markets in the classifier's `targetSeries` come first, then by 24h
+volume, before the `TRADE_MAX_CANDIDATES` cap. Without it a topic with many
+series (16 under `TARIFFS_TRADE`) let a busy unrelated series push the market
+the post is about out of the list. Unknown tickers in `targetSeries` simply
+match nothing.
+
+After the quote read, markets with no ask on either side are dropped: they
+cannot be bought at any price and only cost the selection agent a call. If
+none are left, the outcome is `no_liquid_market`. The cap is applied before
+this filter, so an unquoted market still takes one of the slots.
+
 "Open" means a stored status of `active` and a `close_time` still in the
 future. Kalshi filters with `status=open` but returns `"status": "active"`
 on the market itself (`KALSHI_MARKET_STATUS` in `modules/kalshi`), and the
@@ -342,7 +353,7 @@ and control endpoints (`docs/backend/kalshi.md`, "Testing"). All in
 | --- | --- | --- |
 | `tradeDecision.test.ts` | 1-5 | happy path `ORDER_SIMULATED` with full exit policy; `no_open_market`; `low_confidence` |
 | `preGate.test.ts` | 1 | `topic_not_tradable`, `direction_unclear`, `no_novelty` |
-| `candidateAssembly.test.ts` | 2 | `no_liquid_market` |
+| `candidateAssembly.test.ts` | 2 | `no_liquid_market`; `targetSeries` ranks first; markets with no ask dropped |
 | `selectionAgent.test.ts` | 3 | model `NO_TRADE` (reason passed through), `agent_error` |
 | `riskGate.test.ts` | 4, 5 | `hallucinated_ticker`, `market_not_open` (no ask), `spread_over_limit`, `slippage_over_limit`, `edge_below_cost`, `exposure_cap_trade`, `closing_too_soon` |
 | `exitSupervision.test.ts` | 6 | `EXIT_STOP_LOSS`, `EXIT_TAKE_PROFIT`, `EXIT_TIME_LIMIT`, `EXIT_MARKET_CLOSE` |

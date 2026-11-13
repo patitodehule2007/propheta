@@ -7,7 +7,7 @@ const MS_PER_HOUR = 3_600_000;
 // prose, and a way to smuggle invisible text into a prompt.
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 // Background text must not be able to close the fence it is rendered inside.
-const FENCE_TAG = /<\/?(world_context|brief|author_recent_posts|recent_post)\b[^>]*>/gi;
+const FENCE_TAG = /<\/?(world_context|brief|author_recent_posts|recent_post|tracked_markets)\b[^>]*>/gi;
 
 /**
  * Strips control characters and background fence tags from text embedded in

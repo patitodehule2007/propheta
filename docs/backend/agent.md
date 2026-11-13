@@ -243,22 +243,60 @@ modelled as movement in the **event's probability**, never a sentiment
 score, per §4.3: the same post can raise one market's probability and lower
 another's, and an angry tweet is not automatically bearish for anything.
 
-`agent.schema.ts`'s `postClassificationSchema` adds `confidence` (0–1),
-`summary`, `sourceUrls` (only URLs actually read via a tool, not every URL
-mentioned in the post), and `reasoning`.
+`agent.schema.ts`'s `postClassificationSchema` fields, in generation order:
+`summary`, `reasoning`, `sourceUrls` (only URLs actually read via a tool, not
+every URL mentioned in the post), `targetEvent`, `targetSeries`, `topic`,
+`direction`, `confidence` (0–1). The order is deliberate: structured output is generated
+in schema order, so the written reasoning and the chosen event come before
+the verdict fields that depend on them.
 
-Two classifier rules exist because the defaults were too conservative on real
-posts (`CLASSIFICATION_INSTRUCTIONS`):
+`targetEvent` is the one event the post moves, as a concrete yes/no question
+(e.g. "Will the US tariff rate on Mexico rise?"), chosen from the
+`<tracked_markets>` block. `direction` is the change in *that* event's
+probability. Without a named event the model invented one per run — the same
+post was judged once on "will the bill advance" and once on "will there be a
+shutdown". `NONE` posts carry `targetEvent: "none"`. The event is phrased at
+the level of the tracked series, not narrowed with amounts or deadlines the
+series does not settle on: on the reconciliation post a self-invented "$350B
+bill before the end of the lame duck" gave the model extra details to doubt.
+
+`targetSeries` lists the tracked series tickers that settle on `targetEvent`,
+copied from `<tracked_markets>`, most relevant first; empty for `NONE`. Gate
+2 ranks those series' markets ahead of the rest
+(`docs/backend/trading.md` §2). The selection agent sees both on its
+`target event:` / `target series:` lines.
+
+Classifier rules (`CLASSIFICATION_INSTRUCTIONS`), shaped by the first real
+run on live posts:
 
 - **Multi-measure posts** — the model picks the single measure most likely to
-  move a tracked market and judges that measure's direction. A post that
-  raises one tariff and pauses another is not `UNCLEAR`; `UNCLEAR` is reserved
-  for a chosen measure whose own direction is ambiguous. (A `signals[]` array
-  with fan-out per signal is the planned proper fix.)
+  move a tracked market and makes it the `targetEvent`. A post that raises one
+  tariff and pauses another is not `UNCLEAR`; `UNCLEAR` is reserved for a
+  chosen event whose own direction is ambiguous. (A `signals[]` array with
+  fan-out per signal is the planned proper fix.)
+- **Confidence is about the classification, not the event** — the chance that
+  `topic`, `targetEvent` and `direction` are all right. It is not how likely
+  the event is, nor how far the market should move; pricing that is the
+  selection agent's job, and gate 4's edge shrinkage applies its conviction.
+  Before this rule the model folded event likelihood into confidence, so a
+  conditional threat ("stop the caravans or Mexico tariffs double") scored
+  0.5 and died at gate 1 although its direction was certain.
+- **Conditional threats** — an ultimatum raises the probability of the
+  threatened action; the condition affects magnitude, not direction.
+- **Magnitude never lowers confidence** — uncertainty about how far the
+  market moves, when, or whether the event finally happens is priced later.
+  Added after the reconciliation post scored 0.55 with reasoning that called
+  the direction "clear" but the move "uncertain in size".
 - **Principal as primary source** — a monitored principal's post is the
   announcement. Confidence is not lowered for a missing executive order or
-  press report, only for hedged, conditional or vague wording or
-  contradicting context.
+  press report.
+- **What does lower confidence** — an unclear target event, a direction that
+  depends on facts missing from the post and briefs, contradicting context,
+  sarcasm or quoting someone else, and commentary that commits no one to act.
+- **Anchors** — explicit announcement or threat by the principal ≈ 0.8+; a
+  call on others to act with a clear direction ≈ 0.6–0.7; opinion or
+  commentary ≤ 0.5. Read against `TRADE_MIN_CONFIDENCE`
+  (`docs/backend/tradeDecision.md` §"Risk profiles").
 
 ## decision_log
 
@@ -280,14 +318,32 @@ any exception from the loop or Phase B — an API error, a schema mismatch,
 etc. — metadata is null there; diagnostics go to the logger, not to a
 client-facing table.
 
-## World context
+## Prompt inputs
 
-Before Phase A, `runPostAnalysis` reads every topic's live world brief and
-renders it as a `<world_context>` block ahead of the post in the first user
-message (`docs/backend/worldContext.md`). `AGENT_SYSTEM_PROMPT` and
-`CLASSIFICATION_INSTRUCTIONS` tell the model to use it as background for
-novelty and direction, that the post overrides it, and not to call tools to
-verify it. A failed brief read degrades to no block.
+The first user message of Phase A, in order:
+
+1. `<tracked_markets>` — `trackedMarkets.service.ts`. For every taxonomy
+   topic except `NONE`, the Kalshi series the trading stage can reach, read
+   through `get_topic_series_catalog()` (the `topic_market_series` whitelist
+   joined to the market cache's `kalshi_series` titles), one
+   `- TICKER: title` line per series (the bare ticker until the cache has
+   fetched the series). Topics with no series render as
+   `TOPIC: (no tracked markets)`. Titles are external text, so they pass
+   through `sanitizePromptText` and are kept to one line. A failed read
+   degrades to no block.
+2. `<world_context>` — every topic's live world brief
+   (`docs/backend/worldContext.md`). `AGENT_SYSTEM_PROMPT` and
+   `CLASSIFICATION_INSTRUCTIONS` tell the model to use it as background for
+   novelty and direction, that the post overrides it, and not to call tools
+   to verify it. A failed brief read degrades to no block.
+3. `Current time: <iso>`, then the post as
+   `<post author="@handle" posted_at="<iso>">` — the same shape the selection
+   agent gets. The author lets the model weigh the post as that principal's
+   statement (and read a shared company release as the principal amplifying
+   it); the times let it place the post against the briefs' timeline.
+   `orchestrator.service.ts` passes `handle` and `postedAt` (X's
+   `created_at`) into `AgentPostInput`.
+4. The links line and the tool-use hint.
 
 ## Prompt injection posture
 
@@ -338,16 +394,28 @@ fetch and convert; only the LLM call is faked, not the scraping path.
 Tests steer the script with markers in the post text, which never match real
 posts:
 
-- Classification: `[[topic:X]]`, `[[direction:X]]`, `[[confidence:N]]`.
+- Classification: `[[topic:X]]`, `[[direction:X]]`, `[[confidence:N]]`,
+  `[[event:text]]` (sets `targetEvent`), `[[series:KXA,KXB]]` (sets
+  `targetSeries`).
 - Selection agent (gate 3, read from the post embedded in the selection
   prompt): `[[ticker:X]]` (propose this ticker, even one that is not a
   candidate), `[[fair:N]]`, `[[conviction:N]]`, `[[horizon:N]]`, `[[selection:no_trade]]` (a
   schema-valid `NO_TRADE`, reason `rules_mismatch`) and
   `[[selection:invalid]]` (Phase B output that fails `tradeProposalSchema`).
 
+The mock also records every `/v1/messages` call it receives (bounded buffer,
+never read by the script, so behaviour stays stateless) and serves them at
+`GET /mock/requests?contains=<text>`. `tests/jest/src/helpers/anthropicMock.ts`
+wraps it: `getClassifierPrompt(marker)` returns the classifier's first-turn
+prompt for the post carrying a unique marker.
+
 - `tests/jest/src/agent/analysis.test.ts` — a monitored-author post linking
   to a fixture ends up with an `AGENT_ANALYSIS` / `CLASSIFIED` row whose
-  metadata matches the mock's scripted classification.
+  metadata matches the mock's scripted classification; the classifier prompt
+  carries the author handle, `posted_at` and current time, and lists each
+  topic's tracked markets (`IMMIGRATION: (no tracked markets)` in the test
+  whitelist); `[[event:...]]` lands in `metadata.targetEvent`. The prompt
+  checks add `[[topic:NONE]]` so their posts stop at the pre-gate.
 - `tests/jest/src/agent/scrapeCache.test.ts` — connects to `redis-test`
   directly and asserts both a positive cache entry (successful fixture
   fetch) and a negative one (a fetch that 404s) land under the expected

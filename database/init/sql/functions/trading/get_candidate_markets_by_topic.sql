@@ -1,6 +1,8 @@
 -- Gate 2 (candidate assembly): topic -> whitelisted series -> open markets,
--- from the cache only, never a live Kalshi call on this path. Ranked by 24h volume
--- so the caller can cap to the top N. p_status and p_min_close_time come from
+-- from the cache only, never a live Kalshi call on this path. Markets in
+-- p_priority_series (the series the classifier says settle on the post's
+-- event) rank first, then by 24h volume, so the caller can cap to the top N
+-- without a busy unrelated series crowding the relevant one out. p_status and p_min_close_time come from
 -- the backend: the cache never re-reads a market once Kalshi stops listing it
 -- as open, so a stored status alone cannot tell a live row from a closed one.
 CREATE FUNCTION get_candidate_markets_by_topic(
@@ -9,6 +11,7 @@ CREATE FUNCTION get_candidate_markets_by_topic(
     p_min_close_time timestamptz,
     p_max_close_time timestamptz,
     p_min_series_volume NUMERIC,
+    p_priority_series text[],
     p_limit INT
 )
 RETURNS TABLE (
@@ -53,6 +56,6 @@ AS $$
         AND m.close_time > p_min_close_time
         AND m.close_time <= p_max_close_time
         AND s.volume >= p_min_series_volume
-    ORDER BY m.volume_24h DESC
+    ORDER BY (s.series_ticker = ANY (p_priority_series)) DESC, m.volume_24h DESC
     LIMIT p_limit;
 $$;

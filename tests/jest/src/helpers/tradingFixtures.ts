@@ -16,6 +16,7 @@ export const MonitoredUser = {
 export type MonitoredUser = (typeof MonitoredUser)[keyof typeof MonitoredUser];
 
 export const Topic = {
+    TARIFFS_TRADE: "TARIFFS_TRADE",
     APPOINTMENTS_PERSONNEL: "APPOINTMENTS_PERSONNEL",
     MONETARY_POLICY_FED: "MONETARY_POLICY_FED",
     INTERNATIONAL_CONFLICT: "INTERNATIONAL_CONFLICT",
@@ -84,6 +85,8 @@ export const Signals = {
     novelty: signal(MonitoredUser.JD_VANCE, Topic.SHUTDOWN_BUDGET, Direction.INCREASES),
     // Gate 2
     noLiquidMarket: signal(MonitoredUser.WHITE_HOUSE, Topic.SHUTDOWN_BUDGET, Direction.INCREASES),
+    targetSeriesFirst: signal(MonitoredUser.WHITE_HOUSE, Topic.TARIFFS_TRADE, Direction.INCREASES),
+    unquotedMarketDropped: signal(MonitoredUser.WHITE_HOUSE, Topic.TARIFFS_TRADE, Direction.DECREASES),
     // Gate 3
     modelNoTrade: signal(MonitoredUser.JD_VANCE, Topic.CRYPTO_REGULATION, Direction.INCREASES),
     agentError: signal(MonitoredUser.JD_VANCE, Topic.CRYPTO_REGULATION, Direction.DECREASES),
@@ -105,8 +108,12 @@ export const Signals = {
     marketClose: signal(MonitoredUser.JD_VANCE, Topic.INTERNATIONAL_CONFLICT, Direction.DECREASES)
 } as const satisfies Record<string, SignalIdentity>;
 
-/** Selection-agent markers anthropic-mock reads from the post text. */
+/**
+ * Selection-agent markers anthropic-mock reads from the post text, plus the
+ * classifier's `targetSeries`, which steers candidate ranking at gate 2.
+ */
 export interface SelectionMarkers {
+    targetSeries?: string[];
     ticker?: string;
     fairProbability?: number;
     conviction?: number;
@@ -133,6 +140,7 @@ export function buildSignalText(identity: SignalIdentity, markers: SelectionMark
         marker("topic", identity.topic),
         marker("direction", identity.direction)
     ];
+    if (markers.targetSeries !== undefined) parts.push(marker("series", markers.targetSeries.join(",")));
     if (markers.ticker !== undefined) parts.push(marker("ticker", markers.ticker));
     if (markers.fairProbability !== undefined) parts.push(marker("fair", markers.fairProbability));
     if (markers.conviction !== undefined) parts.push(marker("conviction", markers.conviction));

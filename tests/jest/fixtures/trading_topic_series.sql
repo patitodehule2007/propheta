@@ -2,7 +2,10 @@
 -- file over database/init/sql/seed/trading_topic_series.sql, so the test stack
 -- only ever refreshes the series kalshi-mock serves (mocks/kalshi-mock/src/state.ts):
 --
--- - KXTARIFF  -- TARIFFS_TRADE only. The happy-path market.
+-- - KXTARIFF  -- TARIFFS_TRADE only. The happy-path market, plus one with an
+--                empty book (gate 2 drops it).
+-- - KXTARIFFMEX -- TARIFFS_TRADE only. Lowest volume; ranks first only when the
+--                classifier names it in targetSeries.
 -- - KXTEST    -- MONETARY_POLICY_FED, APPOINTMENTS_PERSONNEL,
 --                INTERNATIONAL_CONFLICT and CRYPTO_REGULATION.
 -- - KXLOWVOL  -- SHUTDOWN_BUDGET only; below TRADE_MIN_SERIES_VOLUME.
@@ -16,6 +19,7 @@ FROM
     (
         VALUES
             ('TARIFFS_TRADE', 'KXTARIFF'),
+            ('TARIFFS_TRADE', 'KXTARIFFMEX'),
             ('MONETARY_POLICY_FED', 'KXTEST'),
             ('APPOINTMENTS_PERSONNEL', 'KXTEST'),
             ('INTERNATIONAL_CONFLICT', 'KXTEST'),

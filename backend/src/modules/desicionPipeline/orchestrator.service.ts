@@ -54,7 +54,9 @@ async function runPostPipeline(post: IngestedPost, handle: string): Promise<void
     const classification = await runPostAnalysis({
         ingestedPostId: post.id,
         platformPostId: post.platformPostId,
-        text: post.rawText
+        text: post.rawText,
+        handle,
+        postedAt: post.receivedAt
     });
 
     if (!classification) return;

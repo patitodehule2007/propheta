@@ -19,11 +19,21 @@ import {
 import { postClassificationSchema, PostClassification } from "./agent.schema";
 import { anthropicClient } from "./anthropicClient.service";
 import { extractStructured } from "./structuredExtraction.service";
+import { loadTrackedMarkets } from "./trackedMarkets.service";
 
 export interface AgentPostInput {
     ingestedPostId: string;
     platformPostId: string;
     text: string;
+    /** Monitored account's handle, without the leading `@`. */
+    handle: string;
+    /** When the post was published, ISO 8601 (X's `created_at`). */
+    postedAt: string;
+}
+
+interface PromptBackground {
+    trackedMarkets: string;
+    worldContext: string;
 }
 
 interface ToolLoopResult {
@@ -54,10 +64,11 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
     }
 
     try {
-        const worldContext = await loadAllTopicsWorldContext();
+        const [trackedMarkets, worldContext] = await Promise.all([loadTrackedMarkets(), loadAllTopicsWorldContext()]);
         // Built once: Phase B must send the exact tools Phase A ran with.
         const tools: Anthropic.Messages.ToolUnion[] = [...toAnthropicTools(), WEB_FETCH_TOOL];
-        const loopResult = await runToolLoop(buildUserPrompt(post.text, worldContext), tools);
+        const userPrompt = buildUserPrompt(post, { trackedMarkets, worldContext }, new Date());
+        const loopResult = await runToolLoop(userPrompt, tools);
         const classification = await extractStructured({
             system: AGENT_SYSTEM_PROMPT,
             tools,
@@ -165,22 +176,25 @@ async function runToolLoop(userPrompt: string, tools: Anthropic.Messages.ToolUni
     return { messages, stopReason: "max_iterations", toolCallCount };
 }
 
-function buildUserPrompt(postText: string, worldContext: string): string {
-    const urls = extractUrls(postText);
+function buildUserPrompt(post: AgentPostInput, background: PromptBackground, now: Date): string {
+    const urls = extractUrls(post.text);
     const linksLine =
         urls.length > 0 ? `Links found in the post text: ${urls.join(", ")}` : "No links found in the post text.";
 
     // Background first, the post last: the post is what is being judged and
     // overrides anything the briefs say.
-    const contextLines = worldContext ? [worldContext, ""] : [];
+    const contextLines = [background.trackedMarkets, background.worldContext].flatMap((block) =>
+        block ? [block, ""] : []
+    );
 
     return [
         ...contextLines,
         "A new post from a monitored political account needs to be analyzed.",
+        `Current time: ${now.toISOString()}`,
         "",
-        "<post_text>",
-        postText,
-        "</post_text>",
+        `<post author="@${post.handle}" posted_at="${post.postedAt}">`,
+        post.text,
+        "</post>",
         "",
         linksLine,
         "",

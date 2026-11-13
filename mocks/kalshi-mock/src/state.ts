@@ -136,6 +136,7 @@ function standardOrderbook(): MockOrderbook {
 
 export const SERIES: MockSeries[] = [
     buildSeries({ ticker: "KXTARIFF", title: "Tariff announcements", tags: ["Inflation"], volume: 5000 }),
+    buildSeries({ ticker: "KXTARIFFMEX", title: "Mexico tariff rate", tags: ["Inflation"], volume: 5000 }),
     buildSeries({
         ticker: "KXTEST",
         title: "Propheta integration test markets",
@@ -157,6 +158,23 @@ const INITIAL_MARKETS: MockMarket[] = [
             "partner before the close time, as reported by the settlement source.",
         rules_secondary: "Settlement source: official White House and USTR press releases.",
         volume_24h_fp: "800.00"
+    }),
+    // Empty book on both sides: gate 2 must drop it before the selection agent.
+    buildMarket({
+        ticker: "KXTARIFF-25-EMPTY",
+        event_ticker: "KXTARIFF-25",
+        series_ticker: "KXTARIFF",
+        yes_sub_title: "Will tariffs on a minor trading partner be announced this quarter?",
+        volume_24h_fp: "5.00"
+    }),
+    // Lowest 24h volume of the tariff markets: it leads the candidate list
+    // only when the classifier names KXTARIFFMEX in targetSeries.
+    buildMarket({
+        ticker: "KXTARIFFMEX-26-A",
+        event_ticker: "KXTARIFFMEX-26",
+        series_ticker: "KXTARIFFMEX",
+        yes_sub_title: "Will the US raise its tariff rate on Mexico this quarter?",
+        volume_24h_fp: "1.00"
     }),
     // BASE has the highest volume, so it is what the selection mock proposes
     // when a post on a KXTEST topic carries no `[[ticker:...]]` marker.
@@ -181,6 +199,8 @@ const INITIAL_MARKETS: MockMarket[] = [
 
 const INITIAL_ORDERBOOKS: Record<string, MockOrderbook> = {
     "KXTARIFF-25-A": standardOrderbook(),
+    "KXTARIFF-25-EMPTY": { yes_dollars: [], no_dollars: [] },
+    "KXTARIFFMEX-26-A": standardOrderbook(),
     "KXTEST-BASE": standardOrderbook(),
     "KXTEST-SL": standardOrderbook(),
     "KXTEST-TP": standardOrderbook(),

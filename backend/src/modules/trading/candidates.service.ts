@@ -63,7 +63,9 @@ async function resolveMaxCloseHorizonMinutes(topic: string): Promise<number> {
 
 /**
  * Gate 2: deterministic, cache read. Topic -> whitelisted series -> cached
- * open markets, ranked by liquidity and capped at `config.trading.maxCandidates`.
+ * open markets, the classifier's target series first and then by liquidity,
+ * capped at `config.trading.maxCandidates`; markets with no ask on either
+ * side are dropped after the quote read.
  * `docs/backend/tradeDecision.md` §"2. Candidate assembly".
  */
 export async function assembleCandidates(input: TradeDecisionInput): Promise<CandidateAssemblyResult> {
@@ -79,6 +81,7 @@ export async function assembleCandidates(input: TradeDecisionInput): Promise<Can
         minCloseTime,
         maxCloseTime,
         minSeriesVolume: 0,
+        prioritySeries: [],
         limit: 1
     });
     if (anyOpenMarket.length === 0) {
@@ -92,6 +95,7 @@ export async function assembleCandidates(input: TradeDecisionInput): Promise<Can
         minCloseTime,
         maxCloseTime,
         minSeriesVolume: config.trading.minSeriesVolume,
+        prioritySeries: classification.targetSeries,
         limit: config.trading.maxCandidates
     });
     if (liquidMarkets.length === 0) {
@@ -100,9 +104,20 @@ export async function assembleCandidates(input: TradeDecisionInput): Promise<Can
     }
 
     const signalAtMs = new Date(post.receivedAt).getTime();
-    const candidates = await Promise.all(liquidMarkets.map((market) => enrichCandidate(market, signalAtMs)));
+    const enriched = await Promise.all(liquidMarkets.map((market) => enrichCandidate(market, signalAtMs)));
+    // A market with no ask on either side cannot be bought at any price;
+    // showing it to the selection agent only spends a model call on it.
+    const candidates = enriched.filter(isQuoted);
+    if (candidates.length === 0) {
+        await logNoTrade(post.id, post.platformPostId, classification, CandidateAssemblyReason.NO_LIQUID_MARKET);
+        return { pass: false, reason: CandidateAssemblyReason.NO_LIQUID_MARKET };
+    }
 
     return { pass: true, candidates };
+}
+
+function isQuoted(candidate: CandidateQuote): boolean {
+    return candidate.yesAsk !== null || candidate.noAsk !== null;
 }
 
 async function logNoTrade(

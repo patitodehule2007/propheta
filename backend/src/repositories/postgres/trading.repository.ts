@@ -33,6 +33,29 @@ export async function getTopicSeriesTickers(): Promise<string[]> {
     return rows.map((row) => row.series_ticker);
 }
 
+export interface TopicSeriesCatalogEntry {
+    topic: string;
+    seriesTicker: string;
+    /** Cached Kalshi series title; null until the market cache has fetched the series. */
+    seriesTitle: string | null;
+}
+
+/**
+ * Reads every whitelisted series per active topic, with its cached title.
+ * Feeds the classifier's `<tracked_markets>` prompt block.
+ * @returns one entry per topic/series pair, ordered by topic then ticker
+ */
+export async function getTopicSeriesCatalog(): Promise<TopicSeriesCatalogEntry[]> {
+    const rows = await query<{ topic: string; series_ticker: string; series_title: string | null }>(
+        "SELECT topic, series_ticker, series_title FROM get_topic_series_catalog()"
+    );
+    return rows.map((row) => ({
+        topic: row.topic,
+        seriesTicker: row.series_ticker,
+        seriesTitle: row.series_title
+    }));
+}
+
 /**
  * Upserts one cached series row, keyed by series_ticker.
  */
@@ -122,7 +145,7 @@ export interface CandidateMarket {
 
 /**
  * Gate 2 (candidate assembly): topic -> cached open markets, from the
- * pre-built cache only.
+ * pre-built cache only. Markets in `prioritySeries` rank first, then by 24h volume.
  */
 export async function getCandidateMarketsByTopic(params: {
     topic: string;
@@ -130,6 +153,8 @@ export async function getCandidateMarketsByTopic(params: {
     minCloseTime: string;
     maxCloseTime: string;
     minSeriesVolume: number;
+    /** Series tickers to rank ahead of the rest; empty ranks by volume alone. */
+    prioritySeries: string[];
     limit: number;
 }): Promise<CandidateMarket[]> {
     const rows = await query<{
@@ -145,12 +170,13 @@ export async function getCandidateMarketsByTopic(params: {
         fee_type: string;
         fee_multiplier: string;
         additional_prohibitions: string[];
-    }>("SELECT * FROM get_candidate_markets_by_topic($1, $2, $3, $4, $5, $6)", [
+    }>("SELECT * FROM get_candidate_markets_by_topic($1, $2, $3, $4, $5, $6, $7)", [
         params.topic,
         params.status,
         params.minCloseTime,
         params.maxCloseTime,
         params.minSeriesVolume,
+        params.prioritySeries,
         params.limit
     ]);
     return rows.map((row) => ({

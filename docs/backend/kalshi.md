@@ -176,7 +176,8 @@ refreshes the mock's series:
 
 | Series | Reached from | Markets |
 | --- | --- | --- |
-| `KXTARIFF` | `TARIFFS_TRADE` | `KXTARIFF-25-A` (happy path) |
+| `KXTARIFF` | `TARIFFS_TRADE` | `KXTARIFF-25-A` (happy path), `KXTARIFF-25-EMPTY` (empty book both sides; gate 2 drops it) |
+| `KXTARIFFMEX` | `TARIFFS_TRADE` | `KXTARIFFMEX-26-A`, lowest 24h volume; ranks first only when the classifier names `KXTARIFFMEX` in `targetSeries` |
 | `KXTEST` | `MONETARY_POLICY_FED`, `APPOINTMENTS_PERSONNEL`, `INTERNATIONAL_CONFLICT`, `CRYPTO_REGULATION` | one per gate/exit scenario: `-BASE`, `-SL`, `-TP`, `-TL`, `-MC`, `-WIDE` (12c spread), `-THIN` (0.5 contracts at the top), `-NOASK` (no NO bids), `-CLOSING` (closes 20 min after mock start), `-SLIP` |
 | `KXLOWVOL` | `SHUTDOWN_BUDGET` | `KXLOWVOL-26-A`, series volume 10 (below the test stack's `TRADE_MIN_SERIES_VOLUME`) |
 

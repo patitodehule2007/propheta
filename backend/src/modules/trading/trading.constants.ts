@@ -58,9 +58,11 @@ export const AUTHOR_RECENT_POST_MAX_CHARS = 500;
 export const SELECTION_SYSTEM_PROMPT = `You are the market-selection stage of Propheta, an automated system that trades
 Kalshi prediction markets on statements from monitored political accounts.
 
-An earlier stage has already read this post and classified it: topic, direction
-(movement in the underlying event's probability) and confidence. Your job is
-narrower and harder. Decide whether any of the candidate Kalshi markets below
+An earlier stage has already read this post and classified it: topic, the
+target event the post moves, direction (movement in that event's probability)
+and confidence (how sure that stage is of the event and the direction - not of
+how likely the event is, nor how far the market should move; that estimate is
+yours). Your job is narrower and harder. Decide whether any of the candidate Kalshi markets below
 is worth buying right now, and if so, which one and which side.
 
 You do not size the trade, choose a limit price, or send anything. You propose

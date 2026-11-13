@@ -80,8 +80,9 @@ Examples: `scripts/http/world-briefs.http`.
 `stale` is true once `as_of` is older than `WORLD_BRIEF_STALE_AFTER_HOURS`.
 
 - **Classifier** (`agent.service.ts`): every topic's live brief, since the
-  post's topic is not known yet. Rendered ahead of `<post_text>` in the
-  first user message.
+  post's topic is not known yet. Rendered after `<tracked_markets>` and
+  ahead of the `<post author=...>` block in the first user message
+  (`docs/backend/agent.md` §"Prompt inputs").
 - **Selection agent** (`selectionAgent.service.ts`): only the classified
   topic's brief, plus `<author_recent_posts>` (the same account's earlier
   posts on that topic). Both are read in parallel.
@@ -113,7 +114,7 @@ before it shapes many decisions.
 pagination, validation (topic, empty or long body, future `asOf`), auth, and
 generation. `mocks/anthropic-mock` answers the world-brief stage (detected by
 its system prompt) with a fixed brief. The mock reads post markers only from
-the `<post_text>` / `<post>` block, so briefs and earlier posts in a prompt
+the `<post author=...>` block (both agents use it), so briefs and earlier posts in a prompt
 never leak markers into a test's script.
 
 ## Not implemented yet

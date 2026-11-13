@@ -86,6 +86,12 @@ taxonomy, direction not `UNCLEAR`, confidence at or above
 `TRADE_MIN_CONFIDENCE`, post carries novelty, kill switch clear, order-rate
 budget clear.
 
+Confidence here is the classifier's certainty about its topic, target event
+and direction — not the event's likelihood or the size of the move, which the
+selection agent prices (`docs/backend/agent.md` §"Classification taxonomy").
+The threshold therefore filters ambiguous reads, not unlikely events: a clear
+conditional threat by the principal should pass it.
+
 This is §4.3's "cheap filter first" applied to the classifier's own output
 rather than to raw text. Most posts that reach it die here without a second
 API call, which is also what makes the latency budget survivable (see below).
@@ -100,7 +106,9 @@ As built, the tag hop was replaced by a hand-picked series whitelist
 `docs/backend/trading.md` §2.
 
 Filters: close time inside the trading horizon (per topic as built), series volume above a floor,
-market status open, series `additional_prohibitions` respected.
+market status open, series `additional_prohibitions` respected, and at least
+one ask after the quote read. As built, the classifier's `targetSeries` rank
+first and volume breaks ties (`docs/backend/trading.md` §2).
 
 For each survivor it pre-computes the numbers **the model must never derive
 itself**:
@@ -222,9 +230,11 @@ its decision, and knowing it only invites the model to reason about it.
 You are the market-selection stage of Propheta, an automated system that trades
 Kalshi prediction markets on statements from monitored political accounts.
 
-An earlier stage has already read this post and classified it: topic, direction
-(movement in the underlying event's probability) and confidence. Your job is
-narrower and harder. Decide whether any of the candidate Kalshi markets below
+An earlier stage has already read this post and classified it: topic, the
+target event the post moves, direction (movement in that event's probability)
+and confidence (how sure that stage is of the event and the direction - not of
+how likely the event is, nor how far the market should move; that estimate is
+yours). Your job is narrower and harder. Decide whether any of the candidate Kalshi markets below
 is worth buying right now, and if so, which one and which side.
 
 You do not size the trade, choose a limit price, or send anything. You propose
@@ -350,6 +360,8 @@ A monitored account just posted. The classification stage has already run.
 
 <classification>
 topic: {TOPIC}   direction: {INCREASES|DECREASES}   confidence: {0-1}
+target event: {classifier targetEvent}
+target series: {classifier targetSeries, comma-separated}
 summary: {classifier summary}
 sources read: {urls}
 </classification>
@@ -737,7 +749,9 @@ One atomic function per operation, no branching and no `EXCEPTION` blocks; the
 backend sequences them: `get_candidate_markets_by_topic`, `upsert_kalshi_market`,
 `insert_trade_proposal`, `get_open_exposure_by_topic`, `insert_order`,
 `insert_position`, `get_open_positions`, `get_positions_due_for_exit`,
-`update_position_peak_favourable`, `close_position`.
+`update_position_peak_favourable`, `close_position`. The classifier reads the
+same whitelist through `get_topic_series_catalog` (topic, series ticker,
+cached title) for its `<tracked_markets>` prompt block.
 
 `get_positions_due_for_exit` takes a timestamp and returns rows; it does not
 decide anything. The precedence rules, the stop and target comparisons and the

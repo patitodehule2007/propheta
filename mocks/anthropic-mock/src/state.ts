@@ -31,7 +31,11 @@ export interface ClassificationOverrides {
     topic?: string;
     direction?: string;
     confidence?: number;
+    targetEvent?: string;
+    targetSeries?: string[];
 }
+
+const DEFAULT_TARGET_EVENT = "Will new US tariffs be announced this quarter?";
 
 /**
  * Fixed classification returned by the mocked Phase B (structured extraction)
@@ -46,20 +50,23 @@ export function buildClassification(
     overrides: ClassificationOverrides = {}
 ): Record<string, unknown> {
     return {
-        topic: overrides.topic ?? "TARIFFS_TRADE",
-        direction: overrides.direction ?? "INCREASES",
-        confidence: overrides.confidence ?? 0.82,
         summary: "The post links to an announcement of new steel tariffs.",
-        sourceUrls,
         reasoning:
             "The linked article confirms a concrete tariff action, which raises the probability of " +
-            "related trade-policy market outcomes."
+            "related trade-policy market outcomes.",
+        sourceUrls,
+        targetEvent: overrides.targetEvent ?? DEFAULT_TARGET_EVENT,
+        targetSeries: overrides.targetSeries ?? [],
+        topic: overrides.topic ?? "TARIFFS_TRADE",
+        direction: overrides.direction ?? "INCREASES",
+        confidence: overrides.confidence ?? 0.82
     };
 }
 
 /**
  * Reads test-only markers out of the post text, e.g. `[[topic:IMMIGRATION]]`,
- * `[[direction:UNCLEAR]]` or `[[confidence:0.1]]`, so integration tests can
+ * `[[direction:UNCLEAR]]`, `[[confidence:0.1]]`, `[[event:Will X happen?]]` or
+ * `[[series:KXA,KXB]]` (sets `targetSeries`), so integration tests can
  * drive a specific classification without a real model call. Never matches
  * real post text.
  */
@@ -67,10 +74,14 @@ export function extractOverrides(text: string): ClassificationOverrides {
     const topicMatch = text.match(/\[\[topic:([A-Z_]+)\]\]/);
     const directionMatch = text.match(/\[\[direction:([A-Z_]+)\]\]/);
     const confidenceMatch = text.match(/\[\[confidence:([\d.]+)\]\]/);
+    const eventMatch = text.match(/\[\[event:([^\]]+)\]\]/);
+    const seriesMatch = text.match(/\[\[series:([A-Z0-9,-]+)\]\]/);
     return {
         topic: topicMatch ? topicMatch[1] : undefined,
         direction: directionMatch ? directionMatch[1] : undefined,
-        confidence: confidenceMatch ? Number(confidenceMatch[1]) : undefined
+        confidence: confidenceMatch ? Number(confidenceMatch[1]) : undefined,
+        targetEvent: eventMatch ? eventMatch[1] : undefined,
+        targetSeries: seriesMatch ? seriesMatch[1].split(",") : undefined
     };
 }
 

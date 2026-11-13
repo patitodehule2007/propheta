@@ -206,6 +206,8 @@ function buildUserPrompt(input: TradeDecisionInput, candidates: CandidateQuote[]
         "",
         "<classification>",
         `topic: ${classification.topic}   direction: ${classification.direction}   confidence: ${classification.confidence}`,
+        `target event: ${classification.targetEvent}`,
+        `target series: ${classification.targetSeries.join(", ")}`,
         `summary: ${classification.summary}`,
         `sources read: ${classification.sourceUrls.join(", ")}`,
         "</classification>",

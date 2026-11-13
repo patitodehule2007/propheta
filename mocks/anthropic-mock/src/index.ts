@@ -38,11 +38,11 @@ app.get("/fixtures/:name", (req: Request, res: Response) => {
 
 const URL_REGEX = /https?:\/\/[^\s<]+/;
 const TICKER_REGEX = /"ticker":"([^"]+)"/g;
-// The post itself, in the classifier's (`<post_text>`) or the selection
-// agent's (`<post author=...>`) prompt. Markers are read only from here: the
-// prompts also carry world briefs and the author's earlier posts, whose own
-// markers must not leak into this post's script.
-const POST_BLOCK_REGEX = /<post_text>([\s\S]*?)<\/post_text>|<post author[^>]*>([\s\S]*?)<\/post>/;
+// The post itself, in the classifier's and the selection agent's prompt
+// (both `<post author=...>`). Markers are read only from here: the prompts
+// also carry world briefs and the author's earlier posts, whose own markers
+// must not leak into this post's script.
+const POST_BLOCK_REGEX = /<post author[^>]*>([\s\S]*?)<\/post>/;
 const WORLD_BRIEF_TOPIC_REGEX = /Topic: ([A-Z_]+)/;
 
 interface MockMessage {
@@ -70,7 +70,7 @@ function isWorldBriefStage(system: unknown): boolean {
 /** The post's own text, or the whole prompt when it carries no post block. */
 function extractPostText(prompt: string): string {
     const match = prompt.match(POST_BLOCK_REGEX);
-    return match ? (match[1] ?? match[2] ?? prompt) : prompt;
+    return match ? (match[1] ?? prompt) : prompt;
 }
 
 /** Candidate tickers appear as `"ticker":"..."` in the JSON candidate table. */
@@ -78,11 +78,46 @@ function extractCandidateTickers(text: string): string[] {
     return Array.from(text.matchAll(TICKER_REGEX), (match) => match[1]);
 }
 
+// --- Test-only request capture -----------------------------------------
+// Observability only: the script above never reads this buffer, so the mock
+// stays stateless in behaviour. Lets tests assert what the backend put into a
+// prompt (author, tracked markets, ...). Bounded so a long test run cannot
+// grow it without limit.
+
+const MAX_CAPTURED_REQUESTS = 200;
+
+interface CapturedRequest {
+    system: unknown;
+    firstUserContent: string;
+    hasOutputConfig: boolean;
+}
+
+const capturedRequests: CapturedRequest[] = [];
+
+function captureRequest(request: CapturedRequest): void {
+    capturedRequests.push(request);
+    if (capturedRequests.length > MAX_CAPTURED_REQUESTS) {
+        capturedRequests.shift();
+    }
+}
+
+// GET /mock/requests?contains=<text> -- captured requests whose first user
+// message contains `text` (a test's unique post marker), oldest first.
+app.get("/mock/requests", (req: Request, res: Response) => {
+    const contains = typeof req.query.contains === "string" ? req.query.contains : "";
+    if (!contains) {
+        res.status(400).json({ error: "contains query parameter is required" });
+        return;
+    }
+    res.status(200).json({ data: capturedRequests.filter((entry) => entry.firstUserContent.includes(contains)) });
+});
+
 app.post("/v1/messages", (req: Request, res: Response) => {
     const body = req.body as { model?: string; messages?: MockMessage[]; output_config?: unknown; system?: unknown };
     const model = body.model ?? "claude-sonnet-5";
     const messages = body.messages ?? [];
     const firstUserContent = String(messages[0]?.content ?? "");
+    captureRequest({ system: body.system, firstUserContent, hasOutputConfig: Boolean(body.output_config) });
     const postText = extractPostText(firstUserContent);
     const urlMatch = postText.match(URL_REGEX);
     const selectionStage = isSelectionStage(body.system);
