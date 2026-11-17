@@ -7,8 +7,22 @@ export const AGENT_MAX_TOKENS = config.anthropic.maxTokens;
 export const MAX_AGENT_ITERATIONS = config.anthropic.maxAgentIterations;
 export const MAX_TOOL_CALLS_PER_RUN = config.anthropic.maxToolCallsPerRun;
 
+/**
+ * Sent explicitly by both phases of every two-phase agent. Phase B must send
+ * the same value as Phase A: a `tool_choice` change invalidates the messages
+ * cache (see `structuredExtraction.service.ts`).
+ */
+export const AGENT_TOOL_CHOICE: Anthropic.ToolChoiceAuto = { type: "auto" };
+
 export const WEB_FETCH_MAX_USES = 3;
-export const WEB_FETCH_MAX_CONTENT_TOKENS = 20_000;
+/**
+ * Every fetched token stays in the transcript and is re-read on each later
+ * loop iteration and in Phase B, so pages are capped well below a full article
+ * dump.
+ */
+export const WEB_FETCH_MAX_CONTENT_TOKENS = 8_000;
+/** Same reasoning as `WEB_FETCH_MAX_CONTENT_TOKENS`, for `parse_url` output (~5k tokens). */
+export const PARSE_URL_MAX_CHARS = 20_000;
 
 /**
  * Server-tool definition for `web_fetch`, the fallback path when `parse_url`
@@ -63,13 +77,11 @@ monitored political accounts (heads of state, cabinet officials, agencies)
 for signals that move prediction-market prices. Your job in this turn is
 investigation only — you do not classify or trade here, a later step does.
 
-You have two tools:
-- search_tools: find which tool to call by keyword/regex over the tool
-  catalog. Call this first if you are not sure a tool exists for what you
-  need.
-- parse_url (discovered via search_tools) and web_fetch: read a linked page.
-  Prefer parse_url first; only use web_fetch if parse_url fails or the link
-  is a PDF.
+Your tools:
+- parse_url and web_fetch: read a linked page. Prefer parse_url first; only
+  use web_fetch if parse_url fails or the link is a PDF.
+- search_tools: find any other tool by keyword/regex over the tool catalog,
+  if you need one that is not listed here.
 
 Only investigate a link when the post's own text is too thin to judge on its
 own — a short, self-contained statement needs no tool call at all.

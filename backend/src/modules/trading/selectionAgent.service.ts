@@ -3,8 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { config } from "../../config";
 import { getRecentClassificationsByHandle } from "../../repositories/postgres/trading.repository";
 import { logger } from "../../shared/services/logger";
-import { AGENT_MAX_TOKENS, AGENT_MODEL, WEB_FETCH_TOOL } from "../agent/agent.constants";
-import { anthropicClient } from "../agent/anthropicClient.service";
+import { AGENT_MAX_TOKENS, AGENT_MODEL, AGENT_TOOL_CHOICE, WEB_FETCH_TOOL } from "../agent/agent.constants";
+import { createMessage } from "../agent/anthropicClient.service";
 import { executeRegistryTool, toAnthropicTools } from "../agent/agent.tools";
 import { extractStructured } from "../agent/structuredExtraction.service";
 import { loadTopicWorldContext, sanitizePromptText } from "../worldContext";
@@ -31,6 +31,7 @@ interface PromptContext {
 }
 
 const MS_PER_DAY = 86_400_000;
+const SELECTION_STAGE = "selection";
 
 interface ToolLoopResult {
     messages: Anthropic.MessageParam[];
@@ -58,6 +59,7 @@ export async function runSelectionAgent(
         const userPrompt = buildUserPrompt(input, candidates, { worldContext, authorRecentPosts });
         const loopResult = await runToolLoop(userPrompt, tools);
         const proposal = await extractStructured({
+            stage: SELECTION_STAGE,
             system: SELECTION_SYSTEM_PROMPT,
             tools,
             transcript: loopResult.messages,
@@ -76,13 +78,17 @@ async function runToolLoop(userPrompt: string, tools: Anthropic.Messages.ToolUni
     let toolCallCount = 0;
 
     for (let iteration = 0; iteration < SELECTION_MAX_ITERATIONS; iteration++) {
-        const response = await anthropicClient.messages.create({
-            model: AGENT_MODEL,
-            max_tokens: AGENT_MAX_TOKENS,
-            system: SELECTION_SYSTEM_PROMPT,
-            tools,
-            messages
-        });
+        const response = await createMessage(
+            { label: `${SELECTION_STAGE}.phaseA`, iteration },
+            {
+                model: AGENT_MODEL,
+                max_tokens: AGENT_MAX_TOKENS,
+                system: SELECTION_SYSTEM_PROMPT,
+                tools,
+                tool_choice: AGENT_TOOL_CHOICE,
+                messages
+            }
+        );
 
         messages = [...messages, { role: "assistant", content: response.content }];
 

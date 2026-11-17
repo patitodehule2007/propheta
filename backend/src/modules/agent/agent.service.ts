@@ -11,13 +11,14 @@ import {
     AGENT_MAX_TOKENS,
     AGENT_MODEL,
     AGENT_SYSTEM_PROMPT,
+    AGENT_TOOL_CHOICE,
     CLASSIFICATION_INSTRUCTIONS,
     MAX_AGENT_ITERATIONS,
     MAX_TOOL_CALLS_PER_RUN,
     WEB_FETCH_TOOL
 } from "./agent.constants";
 import { postClassificationSchema, PostClassification } from "./agent.schema";
-import { anthropicClient } from "./anthropicClient.service";
+import { createMessage } from "./anthropicClient.service";
 import { extractStructured } from "./structuredExtraction.service";
 import { loadTrackedMarkets } from "./trackedMarkets.service";
 
@@ -35,6 +36,16 @@ interface PromptBackground {
     trackedMarkets: string;
     worldContext: string;
 }
+
+const CLASSIFIER_STAGE = "classifier";
+
+/**
+ * Explicit breakpoint on the background block: it is identical across posts
+ * until a brief or the series catalog changes, so posts arriving within the
+ * cache TTL read system + tools + background from cache. Top-level automatic
+ * caching (see `anthropicClient.service.ts`) covers the per-post tail.
+ */
+const BACKGROUND_CACHE_CONTROL: Anthropic.CacheControlEphemeral = { type: "ephemeral" };
 
 interface ToolLoopResult {
     messages: Anthropic.MessageParam[];
@@ -70,6 +81,7 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
         const userPrompt = buildUserPrompt(post, { trackedMarkets, worldContext }, new Date());
         const loopResult = await runToolLoop(userPrompt, tools);
         const classification = await extractStructured({
+            stage: CLASSIFIER_STAGE,
             system: AGENT_SYSTEM_PROMPT,
             tools,
             transcript: loopResult.messages,
@@ -112,18 +124,25 @@ export async function runPostAnalysis(post: AgentPostInput): Promise<PostClassif
  * `web_fetch` pausing a long turn) is resumed by re-sending, per the
  * documented manual-loop pattern.
  */
-async function runToolLoop(userPrompt: string, tools: Anthropic.Messages.ToolUnion[]): Promise<ToolLoopResult> {
+async function runToolLoop(
+    userPrompt: Anthropic.TextBlockParam[],
+    tools: Anthropic.Messages.ToolUnion[]
+): Promise<ToolLoopResult> {
     let messages: Anthropic.MessageParam[] = [{ role: "user", content: userPrompt }];
     let toolCallCount = 0;
 
     for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
-        const response = await anthropicClient.messages.create({
-            model: AGENT_MODEL,
-            max_tokens: AGENT_MAX_TOKENS,
-            system: AGENT_SYSTEM_PROMPT,
-            tools,
-            messages
-        });
+        const response = await createMessage(
+            { label: `${CLASSIFIER_STAGE}.phaseA`, iteration },
+            {
+                model: AGENT_MODEL,
+                max_tokens: AGENT_MAX_TOKENS,
+                system: AGENT_SYSTEM_PROMPT,
+                tools,
+                tool_choice: AGENT_TOOL_CHOICE,
+                messages
+            }
+        );
 
         messages = [...messages, { role: "assistant", content: response.content }];
 
@@ -176,19 +195,27 @@ async function runToolLoop(userPrompt: string, tools: Anthropic.Messages.ToolUni
     return { messages, stopReason: "max_iterations", toolCallCount };
 }
 
-function buildUserPrompt(post: AgentPostInput, background: PromptBackground, now: Date): string {
+/**
+ * Two text blocks: the background shared by every post (cached, see
+ * `BACKGROUND_CACHE_CONTROL`), then the post itself. Background first, the
+ * post last: the post is what is being judged and overrides anything the
+ * briefs say.
+ */
+function buildUserPrompt(post: AgentPostInput, background: PromptBackground, now: Date): Anthropic.TextBlockParam[] {
+    const backgroundText = [background.trackedMarkets, background.worldContext].filter(Boolean).join("\n\n");
+    const postBlock: Anthropic.TextBlockParam = { type: "text", text: buildPostText(post, now) };
+    if (!backgroundText) {
+        return [postBlock];
+    }
+    return [{ type: "text", text: backgroundText, cache_control: BACKGROUND_CACHE_CONTROL }, postBlock];
+}
+
+function buildPostText(post: AgentPostInput, now: Date): string {
     const urls = extractUrls(post.text);
     const linksLine =
         urls.length > 0 ? `Links found in the post text: ${urls.join(", ")}` : "No links found in the post text.";
 
-    // Background first, the post last: the post is what is being judged and
-    // overrides anything the briefs say.
-    const contextLines = [background.trackedMarkets, background.worldContext].flatMap((block) =>
-        block ? [block, ""] : []
-    );
-
     return [
-        ...contextLines,
         "A new post from a monitored political account needs to be analyzed.",
         `Current time: ${now.toISOString()}`,
         "",
@@ -198,7 +225,7 @@ function buildUserPrompt(post: AgentPostInput, background: PromptBackground, now
         "",
         linksLine,
         "",
-        "Use search_tools to find and call parse_url if a link materially affects your analysis — an " +
+        "Call parse_url if a link materially affects your analysis — an " +
             "article, executive order, or press release. Not every post needs a tool call: a short, " +
             "self-contained statement can be judged from its text alone."
     ].join("\n");

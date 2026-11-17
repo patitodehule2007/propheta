@@ -14,6 +14,7 @@ import { scrapePageCached } from "../scraping/scrapeCache.service";
 import { computeFeePerContractCents } from "../trading/pricing";
 import { getLiveOrCachedQuote } from "../trading/quote.service";
 import { RECENT_POSTS_WINDOW_DAYS } from "../trading/trading.constants";
+import { PARSE_URL_MAX_CHARS } from "./agent.constants";
 
 /**
  * `Anthropic.ToolReferenceBlockParam` blocks are the documented contract for
@@ -43,6 +44,19 @@ export interface ToolRegistryEntry {
     deferLoading: boolean;
     inputSchema: Anthropic.Tool.InputSchema;
     run: (input: Record<string, unknown>) => Promise<ToolRunResult>;
+}
+
+const PAGE_TRUNCATED_NOTE = "\n\n[Page truncated: only the beginning is shown.]";
+
+/**
+ * Tool output stays in the transcript and is re-read on every later request of
+ * the run, so long pages are cut to `PARSE_URL_MAX_CHARS`.
+ */
+function capPageContent(markdown: string): string {
+    if (markdown.length <= PARSE_URL_MAX_CHARS) {
+        return markdown;
+    }
+    return markdown.slice(0, PARSE_URL_MAX_CHARS) + PAGE_TRUNCATED_NOTE;
 }
 
 const searchToolsTool: ToolRegistryEntry = {
@@ -88,7 +102,9 @@ const parseUrlTool: ToolRegistryEntry = {
         "Fetch a URL linked from the post and return its main content as markdown. Use this to read an " +
         "article, press release, or executive order before judging a post that links out.",
     keywords: ["scrape", "url", "fetch", "article", "link", "read", "page"],
-    deferLoading: true,
+    // Loaded up front: both agents use it on the hot path, and discovering it
+    // through search_tools costs a full extra request.
+    deferLoading: false,
     inputSchema: {
         type: "object",
         properties: {
@@ -107,7 +123,7 @@ const parseUrlTool: ToolRegistryEntry = {
 
         try {
             const markdown = await scrapePageCached(url);
-            return markdown ?? "The page returned no readable content.";
+            return markdown === null ? "The page returned no readable content." : capPageContent(markdown);
         } catch (err) {
             logger.warn({ err, url }, "parse_url tool failed to fetch a page");
             return "Failed to fetch this page. It may be unreachable, blocked, or not HTML — try web_fetch instead.";
@@ -125,7 +141,8 @@ const getMarketRulesTool: ToolRegistryEntry = {
         "rules_secondary, close time and additional_prohibitions. A title is a summary; rules_primary is " +
         "the contract -- always call this before proposing a market.",
     keywords: ["market", "rules", "settlement", "kalshi", "ticker", "prohibitions"],
-    deferLoading: true,
+    // Loaded up front for the same reason as parse_url.
+    deferLoading: false,
     inputSchema: {
         type: "object",
         properties: { ticker: { type: "string", description: "Kalshi market ticker." } },

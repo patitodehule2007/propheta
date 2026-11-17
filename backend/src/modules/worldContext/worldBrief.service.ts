@@ -4,8 +4,8 @@ import { config } from "../../config";
 import { insertWorldBrief, WorldBrief } from "../../repositories/postgres/worldBrief.repository";
 import { ExternalServiceError, ValidationError } from "../../shared/core/errors";
 import { logger } from "../../shared/services/logger";
-import { AGENT_MAX_TOKENS, AGENT_MODEL, MAX_AGENT_ITERATIONS } from "../agent/agent.constants";
-import { anthropicClient } from "../agent/anthropicClient.service";
+import { AGENT_MAX_TOKENS, AGENT_MODEL, AGENT_TOOL_CHOICE, MAX_AGENT_ITERATIONS } from "../agent/agent.constants";
+import { createMessage } from "../agent/anthropicClient.service";
 import { extractStructured } from "../agent/structuredExtraction.service";
 import {
     BriefableTopic,
@@ -21,6 +21,7 @@ import { sanitizePromptText } from "./worldContext.prompt";
 
 /** Shared by both phases: Phase B must send the exact tools Phase A ran with. */
 const WORLD_BRIEF_TOOLS: Anthropic.Messages.ToolUnion[] = [WORLD_BRIEF_WEB_SEARCH_TOOL];
+const WORLD_BRIEF_STAGE = "worldBrief";
 
 /**
  * Stores a brief written by the operator as a new MANUAL version.
@@ -72,6 +73,7 @@ async function researchAndExtract(topic: BriefableTopic): Promise<GeneratedWorld
     try {
         const transcript = await runResearch(topic);
         return await extractStructured({
+            stage: WORLD_BRIEF_STAGE,
             system: WORLD_BRIEF_SYSTEM_PROMPT,
             tools: WORLD_BRIEF_TOOLS,
             transcript,
@@ -95,13 +97,17 @@ async function runResearch(topic: BriefableTopic): Promise<Anthropic.MessagePara
     ];
 
     for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
-        const response = await anthropicClient.messages.create({
-            model: AGENT_MODEL,
-            max_tokens: AGENT_MAX_TOKENS,
-            system: WORLD_BRIEF_SYSTEM_PROMPT,
-            tools: WORLD_BRIEF_TOOLS,
-            messages
-        });
+        const response = await createMessage(
+            { label: `${WORLD_BRIEF_STAGE}.phaseA`, iteration },
+            {
+                model: AGENT_MODEL,
+                max_tokens: AGENT_MAX_TOKENS,
+                system: WORLD_BRIEF_SYSTEM_PROMPT,
+                tools: WORLD_BRIEF_TOOLS,
+                tool_choice: AGENT_TOOL_CHOICE,
+                messages
+            }
+        );
         messages = [...messages, { role: "assistant", content: response.content }];
         if (response.stop_reason !== "pause_turn") {
             return messages;

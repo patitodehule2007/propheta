@@ -67,6 +67,21 @@ function isWorldBriefStage(system: unknown): boolean {
     return typeof system === "string" && system.includes("world-brief stage of Propheta");
 }
 
+/**
+ * A message's text: a plain string, or the joined `text` blocks when the
+ * content is a block array (the classifier sends its background and the post
+ * as two blocks so the background can be cached).
+ */
+function messageText(content: unknown): string {
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return "";
+    return content
+        .map((block: unknown) =>
+            typeof block === "object" && block !== null && "text" in block ? String(block.text) : ""
+        )
+        .join("\n\n");
+}
+
 /** The post's own text, or the whole prompt when it carries no post block. */
 function extractPostText(prompt: string): string {
     const match = prompt.match(POST_BLOCK_REGEX);
@@ -116,7 +131,7 @@ app.post("/v1/messages", (req: Request, res: Response) => {
     const body = req.body as { model?: string; messages?: MockMessage[]; output_config?: unknown; system?: unknown };
     const model = body.model ?? "claude-sonnet-5";
     const messages = body.messages ?? [];
-    const firstUserContent = String(messages[0]?.content ?? "");
+    const firstUserContent = messageText(messages[0]?.content);
     captureRequest({ system: body.system, firstUserContent, hasOutputConfig: Boolean(body.output_config) });
     const postText = extractPostText(firstUserContent);
     const urlMatch = postText.match(URL_REGEX);
@@ -132,7 +147,7 @@ app.post("/v1/messages", (req: Request, res: Response) => {
     }
 
     if (body.output_config) {
-        // Phase B: the structured extraction call (tools sent, `tool_choice: none`).
+        // Phase B: the structured extraction call (same tools and `tool_choice` as Phase A).
         if (selectionStage) {
             const overrides = extractSelectionOverrides(postText);
             const proposal =
@@ -163,19 +178,9 @@ app.post("/v1/messages", (req: Request, res: Response) => {
         return;
     }
 
-    if (assistantTurns === 0) {
-        res.status(200).json(
-            toolUseResponse(
-                model,
-                "search_tools",
-                { pattern: "scrape|url|fetch" },
-                "Let me find a tool to read the linked page."
-            )
-        );
-        return;
-    }
-
-    if (assistantTurns === 1 && urlMatch) {
+    // parse_url is loaded up front (not deferred), so the classifier calls it
+    // directly rather than discovering it through search_tools first.
+    if (assistantTurns === 0 && urlMatch) {
         res.status(200).json(toolUseResponse(model, "parse_url", { url: urlMatch[0] }, "Reading the linked page."));
         return;
     }

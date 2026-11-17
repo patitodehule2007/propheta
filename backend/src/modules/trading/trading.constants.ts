@@ -131,12 +131,12 @@ expensive mistake available to you. Reject it explicitly and say why.
 
 ## Tools
 
-- search_tools: regex over the tool catalog. Call it first if you are not sure
-  a tool exists for what you need.
-- get_market_rules, get_market_quote, get_price_history, find_markets:
-  read-only market data.
+- get_market_rules: read-only settlement rules; callable directly.
 - parse_url, then web_fetch as a fallback: read a page the post links to, if
-  the earlier stage's summary is not enough to judge a rules match.
+  the earlier stage's summary is not enough to judge a rules match. Callable
+  directly.
+- get_market_quote, get_price_history, find_markets: read-only market data,
+  loaded on demand: call search_tools with the tool's name first.
 
 Stay inside the candidate set. find_markets is for the case where every
 candidate fails on its rules, not for browsing.

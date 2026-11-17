@@ -31,9 +31,9 @@ throws and returns the classification on success or `null` on skip/failure —
 ## Two phases
 
 ```
-Phase A (tools on)          Phase B (tool_choice: none)
-messages.create() loop  ──▶ messages.parse() + output_config.format
-search_tools / parse_url    → PostClassification (zod-validated)
+Phase A (tools on)          Phase B (same tools and tool_choice)
+createMessage() loop    ──▶ parseMessage() + output_config.format
+parse_url / search_tools    → PostClassification (zod-validated)
 web_fetch (server tool)
 ```
 
@@ -48,9 +48,13 @@ the prompt cache.
 Phase B continues the Phase A conversation; it does not rewrite it. It sends
 the **same `system` prompt and the same `tools` array** as Phase A, the
 transcript unchanged, and adds the stage-specific instructions
-(`CLASSIFICATION_INSTRUCTIONS`) as one final user message, with
-`tool_choice: { type: "none" }` so the model answers instead of calling a
-tool.
+(`CLASSIFICATION_INSTRUCTIONS`) as one final user message. Both phases send
+the same `tool_choice` (`AGENT_TOOL_CHOICE`, `{ type: "auto" }`): a
+`tool_choice` change invalidates the messages cache, so a Phase B with
+`tool_choice: none` would re-bill the whole Phase A transcript at full input
+price. The instructions tell the model not to call tools; a Phase B response
+that calls one anyway does not parse and the run is logged as
+`DISCARDED` / `agent_error`.
 
 This is required, not stylistic. On models with preserved thinking (Claude
 Opus 5.5, Sonnet 5.5, Fable), each `thinking` block's signature is bound to
@@ -58,8 +62,9 @@ the `system` prompt, the tool list and every earlier message. Replaying the
 transcript under a different `system` or without `tools` fails with
 `400 Invalid signature in thinking block. The block is bound to a different
 conversation`, and is enforced by default on accounts created on or after
-2026-08-31. Keeping the prefix intact also keeps the system and tools prompt
-cache warm for Phase B.
+2026-08-31. Keeping the prefix intact also lets Phase B read the whole Phase A
+transcript from the prompt cache (see "Prompt caching and usage logging"
+below).
 
 The shared helper is `extractStructured()` in
 `modules/agent/structuredExtraction.service.ts`. All three two-phase callers
@@ -78,7 +83,7 @@ and passes the same array to both phases.
   default 10) — whichever is hit first still proceeds to Phase B with
   whatever transcript exists, tagged with `stopReason` in metadata, rather
   than discarding the run.
-- `extractStructured({ system, tools, transcript, instructions, schema })`
+- `extractStructured({ stage, system, tools, transcript, instructions, schema })`
   (Phase B) — one call with
   `output_config: { format: zodOutputFormat(postClassificationSchema) }`
   (`agent.schema.ts`). `response.parsed_output` is validated client-side by
@@ -145,13 +150,17 @@ still works, it just stops saving context.
 
 ### `parse_url` — cached scraping
 
-`deferLoading: true`. Input: `{ url: string }`. Re-runs `isScrapableUrl`
+`deferLoading: false`: both agents use it on the hot path, and discovering
+it through `search_tools` would cost a full extra request per run. Input:
+`{ url: string }`. Re-runs `isScrapableUrl`
 itself (the SSRF guard belongs inside the tool handler, not only on
 pre-extracted URLs, because the model is steered by untrusted post text and
 could in principle be pushed toward a URL that never went through any
 upstream filter), then calls `scrapePageCached`. Never throws into the loop —
 a failure becomes a plain string result the model can read and decide to try
-`web_fetch` instead.
+`web_fetch` instead. Output is cut to `PARSE_URL_MAX_CHARS` (20 000 chars,
+about 5k tokens) with a truncation note: tool output stays in the transcript
+and is re-read on every later request of the run.
 
 ### `web_fetch` — fallback for what our scraper can't reach
 
@@ -165,7 +174,7 @@ the same limitation `shared/services/webScraper.ts` has. Where they differ:
 `application/xhtml+xml`) and survives hosts that reject our scraper's user
 agent; it also honors `robots.txt`, which our scraper does not. Capped via
 `max_uses` (`WEB_FETCH_MAX_USES`, 3) and `max_content_tokens`
-(`WEB_FETCH_MAX_CONTENT_TOKENS`, 20 000) so a bad page can't blow the budget.
+(`WEB_FETCH_MAX_CONTENT_TOKENS`, 8 000) so a bad page can't blow the budget.
 
 ### Market tools — shared with the selection agent
 
@@ -177,6 +186,8 @@ whichever agent is running:
 - `get_market_rules` — `{ ticker }` → cached title, `rules_primary`,
   `rules_secondary`, close time, `additional_prohibitions`. Reads
   `get_kalshi_market_by_ticker` (`trading.repository.ts`); never calls Kalshi.
+  `deferLoading: false`, like `parse_url`: the selection agent's main tool.
+  The other market tools stay deferred.
 - `get_market_quote` — `{ tickers[] }` (≤ 20) → derived YES/NO ask, spread,
   top-of-book size and fee per contract, per ticker. Reads the latest polled
   sample from the Redis quote cache, falling back to one direct order-book
@@ -320,7 +331,12 @@ client-facing table.
 
 ## Prompt inputs
 
-The first user message of Phase A, in order:
+The first user message of Phase A, as two text blocks. Items 1–2 form the
+background block, which carries an explicit `cache_control` breakpoint: it is
+identical across posts until a brief or the series catalog changes, so posts
+that arrive within the cache TTL (5 minutes) read system, tools and background
+from cache. Items 3–4 form the post block. Without background, only the post
+block is sent.
 
 1. `<tracked_markets>` — `trackedMarkets.service.ts`. For every taxonomy
    topic except `NONE`, the Kalshi series the trading stage can reach, read
@@ -344,6 +360,29 @@ The first user message of Phase A, in order:
    `orchestrator.service.ts` passes `handle` and `postedAt` (X's
    `created_at`) into `AgentPostInput`.
 4. The links line and the tool-use hint.
+
+## Prompt caching and usage logging
+
+Every Claude call in the backend goes through `createMessage(context, params)`
+or `parseMessage(context, params)` in `modules/agent/anthropicClient.service.ts`,
+never through `anthropicClient.messages.*` directly. The wrappers:
+
+- set top-level `cache_control: { type: "ephemeral" }` (automatic caching), so
+  each tool-loop iteration and the Phase B call read the earlier conversation
+  from cache instead of paying full input price again;
+- time the call and log one `info` line, `"Anthropic API call"`, through the
+  shared logger (stdout), with `llmCall` (`classifier.phaseA`,
+  `classifier.phaseB`, `selection.phaseA`, `selection.phaseB`,
+  `worldBrief.phaseA`, `worldBrief.phaseB`), `iteration` (Phase A only),
+  `model`, `durationMs`, `stopReason`, `inputTokens`, `outputTokens`,
+  `cacheCreationInputTokens`, `cacheReadInputTokens`, `webFetchRequests` and
+  `webSearchRequests`. A failed call logs `"Anthropic API call failed"` at
+  `warn` with the duration, then rethrows.
+
+`inputTokens` counts only the uncached input; total input for a call is
+`inputTokens + cacheCreationInputTokens + cacheReadInputTokens`. A run whose
+later calls show `cacheReadInputTokens: 0` has a silent cache invalidator
+(for example a `tool_choice`, `system` or `tools` difference between phases).
 
 ## Prompt injection posture
 

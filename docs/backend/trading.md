@@ -124,7 +124,7 @@ pre-signal price no longer exists anywhere else).
 Same two-phase shape as `agent.service.ts` (`docs/backend/agent.md`), for the
 same reason: a turn that must both call tools and emit strict JSON is
 fragile, so Phase A (tool loop, `SELECTION_SYSTEM_PROMPT`) and Phase B
-(structured output, same system prompt and tools with `tool_choice: none`,
+(structured output, same system prompt, tools and `tool_choice`,
 `PROPOSAL_INSTRUCTIONS` as the final user message) stay separate calls. Budget is
 tighter than the classifier's: `SELECTION_MAX_ITERATIONS` (2) vs. the
 classifier's `AGENT_MAX_ITERATIONS` (6) — rules-reading is one or two tool
