@@ -7,6 +7,7 @@ import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { installPressFeedback } from "./shared/pressFeedback";
 import { useAuthStore } from "./store/authStore";
 
 /**
@@ -19,6 +20,8 @@ export function App(): JSX.Element {
     useEffect(() => {
         void fetchCurrentUser();
     }, [fetchCurrentUser]);
+
+    useEffect(() => installPressFeedback(), []);
 
     return (
         <Routes>

@@ -1,26 +1,142 @@
-import type { FormEvent, JSX } from "react";
-import { useEffect, useState } from "react";
+import type { CSSProperties, FormEvent, JSX } from "react";
+import { useCallback, useEffect, useState } from "react";
 
+import { Button, ButtonSize, ButtonVariant, ErrorBanner, SkeletonRows } from "../components/ui";
 import { extractErrorMessage } from "../shared/apiError";
 import { requestService } from "../shared/requestService";
 import type { MonitoredAccount } from "../types/accounts";
 
 const PAGE_SIZE = 20;
+const SKELETON_ROWS = 5;
+const ACCOUNT_SKELETON_WIDTHS = [40, 60, 70, 80];
+const HANDLE_PREFIX_PATTERN = /^@/;
 
 interface AccountsResponse {
     data: { items: MonitoredAccount[]; totalCount: number; limit: number; offset: number };
 }
+
+interface AccountsPageData {
+    items: MonitoredAccount[];
+    totalCount: number;
+}
+
+const addedDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" });
 
 /**
  * Pure fetch, no component state — safe to call from both the load effect
  * and event handlers without tripping the "no setState in effect body"
  * lint rule.
  */
-async function fetchAccountsPage(currentOffset: number): Promise<{ items: MonitoredAccount[]; totalCount: number }> {
+async function fetchAccountsPage(currentOffset: number): Promise<AccountsPageData> {
     const response = await requestService.get<AccountsResponse>("/accounts", {
         params: { limit: PAGE_SIZE, offset: currentOffset }
     });
     return response.data.data;
+}
+
+function AccountRow({
+    account,
+    index,
+    onRemove
+}: {
+    account: MonitoredAccount;
+    index: number;
+    onRemove: (account: MonitoredAccount) => void;
+}): JSX.Element {
+    const style = { "--enter-index": index } as CSSProperties;
+    return (
+        <li className="tape-row ui-enter" style={style}>
+            <span className="tape-cell mono">@{account.handle}</span>
+            <span className="tape-cell tape-cell-status">
+                <span className="status" data-state={account.isActive ? "live" : "not-wired"}>
+                    <span className="status-mark" aria-hidden="true" />
+                    <span className="status-state">{account.isActive ? "active" : "inactive"}</span>
+                </span>
+            </span>
+            <span className="tape-cell tape-cell-added tape-cell-muted">
+                {addedDateFormatter.format(new Date(account.createdAt))}
+            </span>
+            <span className="tape-cell tape-cell-end">
+                <Button
+                    variant={ButtonVariant.DANGER}
+                    size={ButtonSize.SM}
+                    aria-label={`Remove @${account.handle}`}
+                    onClick={() => onRemove(account)}
+                >
+                    Remove
+                </Button>
+            </span>
+        </li>
+    );
+}
+
+function AddAccountForm({ onAdded }: { onAdded: () => Promise<void> }): JSX.Element {
+    const [handle, setHandle] = useState("");
+    const [addError, setAddError] = useState<string | null>(null);
+    const [isAdding, setIsAdding] = useState(false);
+
+    async function handleAdd(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        const trimmedHandle = handle.trim().replace(HANDLE_PREFIX_PATTERN, "");
+        if (trimmedHandle.length === 0) {
+            setAddError("Enter a handle");
+            return;
+        }
+
+        setAddError(null);
+        setIsAdding(true);
+        try {
+            await requestService.post("/accounts", { handle: trimmedHandle });
+            setHandle("");
+            await onAdded();
+        } catch (err) {
+            setAddError(extractErrorMessage(err, "Could not add that account"));
+        } finally {
+            setIsAdding(false);
+        }
+    }
+
+    return (
+        <section className="panel" aria-labelledby="add-account-title">
+            <div className="panel-head">
+                <h2 id="add-account-title" className="panel-title">
+                    Add account
+                </h2>
+            </div>
+            <form className="panel-body inline-form" onSubmit={(event) => void handleAdd(event)} noValidate>
+                <div className="form-field">
+                    <label className="form-label" htmlFor="handle">
+                        X handle
+                    </label>
+                    <div className="input-shell ui-field" data-invalid={addError !== null || undefined}>
+                        <span className="input-prefix" aria-hidden="true">
+                            @
+                        </span>
+                        <input
+                            id="handle"
+                            className="form-input"
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            placeholder="realDonaldTrump"
+                            value={handle}
+                            aria-invalid={addError !== null}
+                            aria-describedby={addError !== null ? "handle-error" : undefined}
+                            onChange={(event) => setHandle(event.target.value)}
+                        />
+                    </div>
+                </div>
+                <Button type="submit" variant={ButtonVariant.PRIMARY} isPending={isAdding} pendingLabel="Adding">
+                    Add account
+                </Button>
+            </form>
+            {addError !== null && (
+                <p id="handle-error" className="form-error panel-error">
+                    {addError}
+                </p>
+            )}
+        </section>
+    );
 }
 
 /**
@@ -34,31 +150,12 @@ export function AccountsPage(): JSX.Element {
     const [offset, setOffset] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-
-    const [handle, setHandle] = useState("");
-    const [addError, setAddError] = useState<string | null>(null);
-    const [isAdding, setIsAdding] = useState(false);
-
-    async function loadAccounts(currentOffset: number): Promise<void> {
-        setIsLoading(true);
-        setLoadError(null);
-        try {
-            const page = await fetchAccountsPage(currentOffset);
-            setAccounts(page.items);
-            setTotalCount(page.totalCount);
-        } catch (err) {
-            setLoadError(extractErrorMessage(err, "Could not load monitored accounts"));
-        } finally {
-            setIsLoading(false);
-        }
-    }
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         let cancelled = false;
 
         async function run(): Promise<void> {
-            setIsLoading(true);
-            setLoadError(null);
             try {
                 const page = await fetchAccountsPage(offset);
                 if (cancelled) return;
@@ -75,29 +172,14 @@ export function AccountsPage(): JSX.Element {
         return () => {
             cancelled = true;
         };
-    }, [offset]);
+    }, [offset, reloadKey]);
 
-    async function handleAdd(event: FormEvent<HTMLFormElement>): Promise<void> {
-        event.preventDefault();
-        const trimmedHandle = handle.trim().replace(/^@/, "");
-        if (trimmedHandle.length === 0) {
-            setAddError("Enter a handle");
-            return;
-        }
-
-        setAddError(null);
-        setIsAdding(true);
-        try {
-            await requestService.post("/accounts", { handle: trimmedHandle });
-            setHandle("");
-            setOffset(0);
-            await loadAccounts(0);
-        } catch (err) {
-            setAddError(extractErrorMessage(err, "Could not add that account"));
-        } finally {
-            setIsAdding(false);
-        }
-    }
+    const reload = useCallback((nextOffset: number): void => {
+        setIsLoading(true);
+        setLoadError(null);
+        setOffset(nextOffset);
+        setReloadKey((key) => key + 1);
+    }, []);
 
     async function handleRemove(account: MonitoredAccount): Promise<void> {
         if (!window.confirm(`Stop monitoring @${account.handle}?`)) {
@@ -105,7 +187,7 @@ export function AccountsPage(): JSX.Element {
         }
         try {
             await requestService.delete(`/accounts/${account.id}`);
-            await loadAccounts(offset);
+            reload(offset);
         } catch (err) {
             setLoadError(extractErrorMessage(err, "Could not remove that account"));
         }
@@ -113,93 +195,86 @@ export function AccountsPage(): JSX.Element {
 
     const canGoPrev = offset > 0;
     const canGoNext = offset + PAGE_SIZE < totalCount;
+    const rangeStart = totalCount === 0 ? 0 : offset + 1;
+    const rangeEnd = Math.min(offset + PAGE_SIZE, totalCount);
+    const hasRows = !isLoading && loadError === null && accounts.length > 0;
 
     return (
         <>
-            <h1 className="page-title">Monitored accounts</h1>
-
-            <div className="card">
-                <h2 className="card-title">Add account</h2>
-                <form className="inline-form" onSubmit={(event) => void handleAdd(event)}>
-                    <div className="form-field">
-                        <label className="form-label" htmlFor="handle">
-                            X handle
-                        </label>
-                        <input
-                            id="handle"
-                            className="form-input"
-                            type="text"
-                            placeholder="realDonaldTrump"
-                            value={handle}
-                            onChange={(event) => setHandle(event.target.value)}
-                        />
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={isAdding}>
-                        {isAdding ? "Adding..." : "Add"}
-                    </button>
-                </form>
-                {addError !== null && <p className="form-error">{addError}</p>}
+            <div className="page-head">
+                <h1 className="page-title">Monitored accounts</h1>
             </div>
 
-            <div className="card">
-                <h2 className="card-title">Accounts ({totalCount})</h2>
+            <AddAccountForm onAdded={async () => reload(0)} />
 
-                {isLoading && <p className="empty-state">Loading...</p>}
-                {!isLoading && loadError !== null && <p className="form-error">{loadError}</p>}
+            <section className="panel" aria-labelledby="accounts-title">
+                <div className="panel-head">
+                    <h2 id="accounts-title" className="panel-title">
+                        Accounts
+                    </h2>
+                    {!isLoading && loadError === null && <span className="panel-count mono">{totalCount}</span>}
+                </div>
+
+                {isLoading && (
+                    <SkeletonRows
+                        rows={SKELETON_ROWS}
+                        tapeClassName="accounts-tape"
+                        columnWidths={ACCOUNT_SKELETON_WIDTHS}
+                        label="Loading monitored accounts"
+                    />
+                )}
+                {!isLoading && loadError !== null && (
+                    <ErrorBanner message={loadError} onRetry={() => reload(offset)} />
+                )}
                 {!isLoading && loadError === null && accounts.length === 0 && (
-                    <p className="empty-state">No accounts yet — add one above.</p>
+                    <p className="empty-state">No accounts yet. Add a handle above to start monitoring.</p>
                 )}
 
-                {!isLoading && loadError === null && accounts.length > 0 && (
+                {hasRows && (
                     <>
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Handle</th>
-                                    <th>Status</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {accounts.map((account) => (
-                                    <tr key={account.id}>
-                                        <td>@{account.handle}</td>
-                                        <td>{account.isActive ? "Active" : "Inactive"}</td>
-                                        <td>
-                                            <button
-                                                type="button"
-                                                className="btn btn-danger"
-                                                onClick={() => void handleRemove(account)}
-                                            >
-                                                Remove
-                                            </button>
-                                        </td>
-                                    </tr>
+                        <div className="tape accounts-tape">
+                            <div className="tape-head" aria-hidden="true">
+                                <span>Handle</span>
+                                <span>Status</span>
+                                <span>Added</span>
+                                <span />
+                            </div>
+                            <ol className="tape">
+                                {accounts.map((account, index) => (
+                                    <AccountRow
+                                        key={account.id}
+                                        account={account}
+                                        index={index}
+                                        onRemove={(target) => void handleRemove(target)}
+                                    />
                                 ))}
-                            </tbody>
-                        </table>
+                            </ol>
+                        </div>
 
-                        <div className="inline-form" style={{ marginTop: "var(--space-3)" }}>
-                            <button
-                                type="button"
-                                className="btn"
-                                disabled={!canGoPrev}
-                                onClick={() => setOffset((current) => Math.max(0, current - PAGE_SIZE))}
-                            >
-                                Previous
-                            </button>
-                            <button
-                                type="button"
-                                className="btn"
-                                disabled={!canGoNext}
-                                onClick={() => setOffset((current) => current + PAGE_SIZE)}
-                            >
-                                Next
-                            </button>
+                        <div className="pager">
+                            <span className="mono">
+                                {rangeStart}–{rangeEnd} of {totalCount}
+                            </span>
+                            <div className="pager-actions">
+                                <Button
+                                    size={ButtonSize.SM}
+                                    disabled={!canGoPrev}
+                                    onClick={() => reload(Math.max(0, offset - PAGE_SIZE))}
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    size={ButtonSize.SM}
+                                    disabled={!canGoNext}
+                                    onClick={() => reload(offset + PAGE_SIZE)}
+                                >
+                                    Next
+                                </Button>
+                            </div>
                         </div>
                     </>
                 )}
-            </div>
+            </section>
         </>
     );
 }

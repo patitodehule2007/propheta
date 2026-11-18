@@ -204,6 +204,20 @@ requestService.get('/api/data').then(res => ...)
 
 Visual design rules (interaction patterns, feedback and alert selection, loading/error/empty states, responsive behavior, accessibility) will live in a dedicated design doc — the single source of truth for frontend UI. Create it before building UI and read it before creating or modifying any frontend code.
 
+### UI design workflow (creating or redesigning an interface)
+
+Project-local skills: `.claude/skills/frontend-design/` (discovery-first UI/UX craft) and `.claude/skills/better-design/` (direction, layout geometry, interaction kit, validation). Install is project-scoped; do not install them globally.
+
+When asked to create or redesign an interface, follow this order and do not start coding before step 3 is approved:
+
+1. **Discovery.** Ask questions in small batches, scaled to the task size. Cover: what is being built and for whom, the intended feeling, visual references the user likes or dislikes, target platform, and whether the work is mobile-first or desktop-first. For a small change, ask only what is truly needed.
+2. **Unknowns.** When the user does not know an answer, propose 2–3 concrete options with short examples instead of an open question.
+3. **Visual directions.** Present 2–3 distinct directions, each with why it fits the product and audience. Wait for the user to pick one (or merge two).
+4. **Build.** Use the chosen direction as the design base. Use `better-design` for coherent, responsive layouts with deliberate interactions (press/hover/focus/state feedback, reduced motion, keyboard access). Respect the existing stack, design system, and rules in this file.
+5. **Verify.** Check the result visually at desktop and mobile widths when possible, and report what was actually tested.
+
+Do not redesign existing pages without this flow.
+
 ---
 
 ## TypeScript
