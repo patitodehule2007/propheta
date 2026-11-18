@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { z } from "zod";
 
+import { Button, ButtonSize, ButtonVariant } from "../components/ui";
 import { extractErrorMessage } from "../shared/apiError";
 import { useAuthStore } from "../store/authStore";
 
@@ -52,48 +53,77 @@ export function LoginPage(): JSX.Element {
         }
     }
 
+    const hasFieldError = fieldError !== null;
+
     return (
-        <div className="login-page">
-            <form className="card login-card" onSubmit={(event) => void handleSubmit(event)}>
-                <h1 className="card-title">Propheta</h1>
-
-                <div className="form-field">
-                    <label className="form-label" htmlFor="email">
-                        Email
-                    </label>
-                    <input
-                        id="email"
-                        className="form-input"
-                        type="email"
-                        autoComplete="username"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        required
-                    />
+        <main className="login-page">
+            <div className="login-panel">
+                <div>
+                    <h1 className="login-brand">Propheta</h1>
+                    <div className="tape-rule" aria-hidden="true" />
                 </div>
 
-                <div className="form-field">
-                    <label className="form-label" htmlFor="password">
-                        Password
-                    </label>
-                    <input
-                        id="password"
-                        className="form-input"
-                        type="password"
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(event) => setPassword(event.target.value)}
-                        required
-                    />
-                </div>
+                <form className="login-form" onSubmit={(event) => void handleSubmit(event)} noValidate>
+                    <div className="form-field">
+                        <label className="form-label" htmlFor="email">
+                            Email
+                        </label>
+                        <div className="input-shell ui-field" data-invalid={hasFieldError || undefined}>
+                            <input
+                                id="email"
+                                className="form-input"
+                                type="email"
+                                autoComplete="username"
+                                value={email}
+                                aria-invalid={hasFieldError}
+                                aria-describedby={hasFieldError ? "login-field-error" : undefined}
+                                onChange={(event) => setEmail(event.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
 
-                {fieldError !== null && <p className="form-error">{fieldError}</p>}
-                {formError !== null && <p className="form-error">{formError}</p>}
+                    <div className="form-field">
+                        <label className="form-label" htmlFor="password">
+                            Password
+                        </label>
+                        <div className="input-shell ui-field" data-invalid={hasFieldError || undefined}>
+                            <input
+                                id="password"
+                                className="form-input"
+                                type="password"
+                                autoComplete="current-password"
+                                value={password}
+                                aria-invalid={hasFieldError}
+                                aria-describedby={hasFieldError ? "login-field-error" : undefined}
+                                onChange={(event) => setPassword(event.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
 
-                <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-                    {isSubmitting ? "Signing in..." : "Sign in"}
-                </button>
-            </form>
-        </div>
+                    {hasFieldError && (
+                        <p id="login-field-error" className="form-error">
+                            {fieldError}
+                        </p>
+                    )}
+                    {formError !== null && (
+                        <p className="form-error" role="alert">
+                            {formError}
+                        </p>
+                    )}
+
+                    <Button
+                        type="submit"
+                        variant={ButtonVariant.PRIMARY}
+                        size={ButtonSize.LG}
+                        isPending={isSubmitting}
+                        pendingLabel="Signing in"
+                    >
+                        Sign in
+                    </Button>
+                </form>
+            </div>
+        </main>
     );
 }

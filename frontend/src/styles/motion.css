@@ -1,0 +1,220 @@
+/*
+ * Interaction baseline, ported from the better-design interaction kit and mapped to
+ * Propheta motion tokens. Press feedback coordinates come from shared/pressFeedback.ts.
+ */
+
+/* Press: compress on down, bloom from the touch point, spring back on release */
+.ui-press {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transform: scale(1);
+    transition:
+        transform var(--motion-release) var(--spring-pop),
+        background-color var(--motion-hover) var(--ease-color),
+        border-color var(--motion-hover) var(--ease-color),
+        color var(--motion-hover) var(--ease-color),
+        filter var(--motion-hover) var(--ease-color),
+        outline-offset var(--motion-focus) var(--ease-out),
+        outline-color var(--motion-focus) var(--ease-out);
+}
+
+.ui-press:active:not(:disabled):not([aria-disabled="true"]),
+.ui-press[data-pressed] {
+    transform: scale(var(--ui-press-scale, 0.96));
+    filter: brightness(1.18);
+    transition-duration: var(--motion-press-down);
+    transition-timing-function: var(--ease-out);
+}
+
+.ui-press::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+        circle at var(--ui-px, 50%) var(--ui-py, 50%),
+        var(--press-bloom) 0%,
+        transparent 70%
+    );
+    opacity: 0;
+    transition: opacity 600ms var(--ease-out);
+}
+
+.ui-press[data-pressed]::after {
+    opacity: 1;
+    transition-duration: 90ms;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .ui-press:hover:not(:disabled):not([aria-disabled="true"]) {
+        filter: brightness(1.1);
+    }
+}
+
+.ui-press:disabled,
+.ui-press[aria-disabled="true"] {
+    cursor: not-allowed;
+    opacity: 0.45;
+    filter: none;
+}
+
+/* Focus: the ring grows into place */
+.ui-press,
+.ui-dim,
+.ui-field {
+    outline: 2px solid transparent;
+    outline-offset: 6px;
+}
+
+.ui-press:focus-visible,
+.ui-dim:focus-visible {
+    outline-color: var(--color-signal);
+    outline-offset: 2px;
+}
+
+/* Text action (nav links): dims under the finger */
+.ui-dim {
+    transition:
+        opacity 320ms var(--ease-out),
+        color var(--motion-hover) var(--ease-color),
+        outline-offset var(--motion-focus) var(--ease-out),
+        outline-color var(--motion-focus) var(--ease-out);
+}
+
+.ui-dim:active,
+.ui-dim[data-pressed] {
+    opacity: 0.5;
+    transition-duration: 40ms, var(--motion-hover), var(--motion-focus), var(--motion-focus);
+}
+
+/* Field: focus grows a soft signal ring; an error shakes once */
+.ui-field {
+    transition:
+        border-color var(--motion-hover) var(--ease-color),
+        box-shadow var(--motion-focus) var(--ease-out);
+}
+
+.ui-field:focus-within {
+    border-color: var(--color-signal);
+    box-shadow: 0 0 0 3px var(--color-signal-soft);
+}
+
+@keyframes ui-shake {
+    0%,
+    100% {
+        transform: none;
+    }
+    20% {
+        transform: translateX(-5px);
+    }
+    40% {
+        transform: translateX(5px);
+    }
+    60% {
+        transform: translateX(-3px);
+    }
+    80% {
+        transform: translateX(2px);
+    }
+}
+
+.ui-shake {
+    animation: ui-shake 320ms var(--ease-out);
+}
+
+/* Button states: pending keeps the button width */
+.ui-btn-state {
+    display: inline-grid;
+    place-items: center;
+}
+
+.ui-btn-state > * {
+    grid-area: 1 / 1;
+    transition:
+        opacity 180ms var(--ease-out),
+        transform var(--motion-state) var(--spring-snap);
+}
+
+.ui-btn-state > .ui-state-pending {
+    opacity: 0;
+    transform: translateY(6px) scale(0.9);
+}
+
+.ui-btn-state[data-state="pending"] > .ui-state-label {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.96);
+}
+
+.ui-btn-state[data-state="pending"] > .ui-state-pending {
+    opacity: 1;
+    transform: none;
+}
+
+.ui-spinner {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    animation: ui-spin 700ms linear infinite;
+}
+
+@keyframes ui-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Content entering after a load: short rise, crossfade from the skeleton */
+@keyframes ui-enter {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+.ui-enter {
+    animation: ui-enter var(--motion-enter) var(--ease-out) both;
+    animation-delay: calc(min(var(--enter-index, 0), 6) * 30ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ui-press {
+        transition-property: background-color, border-color, color, filter, opacity, outline-offset, outline-color;
+    }
+
+    .ui-press:active:not(:disabled):not([aria-disabled="true"]),
+    .ui-press[data-pressed] {
+        transform: none;
+    }
+
+    .ui-btn-state > * {
+        transform: none;
+    }
+
+    .ui-shake {
+        animation: none;
+    }
+
+    .ui-enter {
+        animation-name: ui-fade;
+    }
+}
+
+@keyframes ui-fade {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}

@@ -4,7 +4,9 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App";
 import "./styles/tokens.css";
+import "./styles/motion.css";
 import "./styles/layout.css";
+import "./styles/components.css";
 
 const rootElement = document.getElementById("root");
 
