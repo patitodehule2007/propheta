@@ -63,7 +63,11 @@ Reduced motion keeps color/opacity feedback and drops travel and scale.
 ## Components (`frontend/src/components/ui/`)
 
 `Button` (variants default/primary/ghost/danger, sizes sm/md/lg, `isPending`),
-`StatusIndicator` (live/down/not-wired — shape + text), `Readout` (big figure, `null` → "—"),
+`StatusIndicator` (live/down/not-wired — shape + text), `Readout` (big figure, `null` → "—",
+optional up/down `tone` for signed figures),
 `SkeletonRows` (mirrors tape grid), `ErrorBanner` (with Retry), `DecisionChip` (▲/▼/○ + value),
 `ProbabilityBar` (entry price on 0–100¢ with stop/target marks — only drawn from real
-`metadata.entryPriceCents`). Shell: `DashboardLayout` (rail + sliding indicator), `StatusBar`.
+`metadata.entryPriceCents` or, in the simulated demo, labelled fixture data). Shell: `AppShell` (rail + sliding
+indicator + `StatusBar`, whose connection states default to "not wired"), wrapped by `DashboardLayout`.
+Dashboard panels live in `components/dashboard/` (`DashboardView`, `MetricsReadouts`, `LatestPostPanel`,
+`OpenPositionsPanel`, `RecentDecisionsPanel`).

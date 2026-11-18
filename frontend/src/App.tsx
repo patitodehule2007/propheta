@@ -1,14 +1,24 @@
 import type { JSX } from "react";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { DashboardLayout } from "./components/DashboardLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { DEMO_BASE_PATH } from "./demo/demo.constants";
+import { LazyDemoDashboardPage } from "./demo/lazyDemoDashboardPage";
 import { AccountsPage } from "./pages/AccountsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { installPressFeedback } from "./shared/pressFeedback";
 import { useAuthStore } from "./store/authStore";
+
+function DemoPage({ Page }: { Page: NonNullable<typeof LazyDemoDashboardPage> }): JSX.Element {
+    return (
+        <Suspense fallback={<div className="empty-state">Loading...</div>}>
+            <Page />
+        </Suspense>
+    );
+}
 
 /**
  * Application root. Restores the session (if any) once on mount, then
@@ -26,6 +36,12 @@ export function App(): JSX.Element {
     return (
         <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {LazyDemoDashboardPage !== null && (
+                <>
+                    <Route path={DEMO_BASE_PATH} element={<DemoPage Page={LazyDemoDashboardPage} />} />
+                    <Route path={`${DEMO_BASE_PATH}/:scenarioId`} element={<DemoPage Page={LazyDemoDashboardPage} />} />
+                </>
+            )}
             <Route element={<ProtectedRoute />}>
                 <Route element={<DashboardLayout />}>
                     <Route path="/" element={<DashboardPage />} />

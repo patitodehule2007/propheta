@@ -50,7 +50,14 @@ Stylesheets: `tokens.css`, `motion.css`, `layout.css`, `components.css`, importe
   with a sliding active indicator, a sticky `StatusBar` (X webhook, Kalshi
   WebSocket, kill switch — "not wired"/unavailable until the backend exposes
   them), and the content column. Under `768px` the rail becomes a top bar.
+  The chrome itself is `AppShell`, also used by the simulated demo.
+- Dashboard (`components/dashboard/DashboardView`), top to bottom: readout row,
+  "Latest post" (post text left, pipeline stages right — ✓ passed, ■ stopped,
+  · not reached, stacked under `1024px`), "Open positions" tape, "Recent
+  decisions" tape (rows of the highlighted post get a signal left edge).
 - Panels: `.panel` + `.panel-head`; lists are `.tape` rows, not tables.
+- Simulated data is always labelled: the demo shows a `SIMULATED` warn badge
+  (hideable only via `?clean=1` for screenshots).
 
 ## Accessibility
 
