@@ -5,6 +5,14 @@ Single source of truth for visual design and UX conventions, per
 framework is installed — plain CSS with custom properties
 (`frontend/src/styles/tokens.css`), imported once in `main.tsx`.
 
+## UI design workflow
+
+New or redesigned interfaces follow the discovery-first flow in `CLAUDE.md`
+("UI design workflow"): discovery questions, 2–3 visual directions, the user
+picks one, then build with the project-local `better-design` and
+`frontend-design` skills (`.claude/skills/`). Verify at desktop and mobile
+widths.
+
 ## Tokens
 
 Dark operator console (trading dashboard, long viewing sessions). Defined as
